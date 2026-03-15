@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const answerOptions = [
   { label: "Leader Only", value: "leader_only" },
@@ -16,15 +17,37 @@ export default function CreateTeamPage() {
   const [answerMode, setAnswerMode] = useState("leader_only");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const check = async () => {
+      const { data } = await supabaseBrowser.auth.getSession();
+      if (!data.session) {
+        router.replace("/auth?redirect=/create-team");
+        return;
+      }
+      setCheckingAuth(false);
+    };
+    check();
+  }, [router]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
     setLoading(true);
 
+    const { data } = await supabaseBrowser.auth.getSession();
+    if (!data.session) {
+      router.replace("/auth?redirect=/create-team");
+      return;
+    }
+
     const response = await fetch("/api/teams/create", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${data.session.access_token}`,
+      },
       body: JSON.stringify({
         teamName,
         leaderName,
@@ -164,9 +187,9 @@ export default function CreateTeamPage() {
           <button
             type="submit"
             className="button-primary w-full"
-            disabled={loading}
+            disabled={loading || checkingAuth}
           >
-            {loading ? "Creating…" : "Create Team"}
+            {loading || checkingAuth ? "Creating…" : "Create Team"}
           </button>
         </form>
       </div>

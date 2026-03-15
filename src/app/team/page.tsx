@@ -67,6 +67,7 @@ const statusStyles: Record<string, string> = {
 
 export default function TeamDashboardPage() {
   const router = useRouter();
+  const INDIVIDUAL_START_ROUNDS = useMemo(() => new Set([1, 2]), []);
   const [session, setSession] = useState<SessionData | null>(null);
   const [team, setTeam] = useState<TeamDetail | null>(null);
   const [currentGame, setCurrentGame] = useState<GameRecord | null>(null);
@@ -124,11 +125,15 @@ export default function TeamDashboardPage() {
 
   const fetchMembers = useCallback(async () => {
     if (!session) return;
-    const response = await fetch(`/api/teams/${session.teamId}/players`);
-    const data = await response.json();
+    const response = await fetch(`/api/teams/${session.teamId}/players`, {
+      cache: "no-store",
+    });
+    const data = await response.json().catch(() => null);
     if (response.ok && Array.isArray(data)) {
       setMembers(data);
+      return;
     }
+    setMembers([]);
   }, [session]);
 
   useEffect(() => {
@@ -237,8 +242,10 @@ export default function TeamDashboardPage() {
       setCurrentOpen(payload.open ?? null);
       setSelectedGame(payload.game ?? null);
       setModalError("");
-      setGameStarted(false);
-      setGameStartAt(null);
+      if (INDIVIDUAL_START_ROUNDS.has(round?.round_number ?? 0)) {
+        setGameStarted(false);
+        setGameStartAt(null);
+      }
     } else {
       setModalError(payload.error ?? "Unable to open game");
     }
@@ -330,6 +337,10 @@ export default function TeamDashboardPage() {
     gameStarted &&
     (team?.answer_mode === "all_members" || session?.isLeader);
 
+  const isIndividualStartRound = INDIVIDUAL_START_ROUNDS.has(
+    round?.round_number ?? 0,
+  );
+
   useEffect(() => {
     if (!gameStarted || !gameStartAt || !round?.duration_seconds) {
       setTimeLeft(null);
@@ -351,6 +362,17 @@ export default function TeamDashboardPage() {
     const intervalId = window.setInterval(updateTimer, 1000);
     return () => window.clearInterval(intervalId);
   }, [gameStarted, gameStartAt, round]);
+
+  useEffect(() => {
+    if (!round?.started_at) {
+      setGameStarted(false);
+      setGameStartAt(null);
+      return;
+    }
+
+    setGameStarted(true);
+    setGameStartAt(new Date(round.started_at).getTime());
+  }, [round?.started_at]);
 
   return (
     <main className="page-shell">
@@ -406,34 +428,19 @@ export default function TeamDashboardPage() {
                 const isYou =
                   member.display_name.toLowerCase() ===
                   (session?.playerName ?? "").toLowerCase();
+                const isLeader =
+                  member.display_name.toLowerCase() ===
+                  (team?.leader_name ?? "").toLowerCase();
                 return (
-                  <span key={member.id}>
-                    [{member.display_name}{isYou ? " (you)" : ""}]
+                  <span key={member.id} className="member-pill">
+                    <span className="member-name">{member.display_name}</span>
+                    {isLeader && (
+                      <span className="role-pill role-leader">Leader</span>
+                    )}
+                    {isYou && <span className="role-pill role-you">You</span>}
                   </span>
                 );
               })}
-            </div>
-          )}
-          {members.length > 0 && (
-            <div className="rounded-xl border border-slate-700/50 bg-slate-900/50 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-400">Roster</p>
-              <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-300">
-                {members.map((member) => {
-                  const isYou =
-                    member.display_name.toLowerCase() ===
-                    (session?.playerName ?? "").toLowerCase();
-                  const isLeader =
-                    member.display_name.toLowerCase() ===
-                    (team?.leader_name ?? "").toLowerCase();
-                  return (
-                    <span key={member.id}>
-                      {member.display_name}
-                      {isLeader ? " (leader)" : ""}
-                      {isYou ? " (you)" : ""}
-                    </span>
-                  );
-                })}
-              </div>
             </div>
           )}
           <div className="flex flex-wrap gap-3">
@@ -483,11 +490,6 @@ export default function TeamDashboardPage() {
               ? `Round ${round.round_number}`
               : "Waiting for admin to start a round"}
           </p>
-          {round?.remaining_seconds !== null && round?.remaining_seconds !== undefined && (
-            <p className="text-sm text-slate-300">
-              Time left: {Math.max(0, Math.floor(round.remaining_seconds))}s
-            </p>
-          )}
         </div>
       </div>
 
@@ -598,6 +600,10 @@ export default function TeamDashboardPage() {
                 <p className="text-xs text-gray-500">
                   {round?.status !== "active"
                     ? "Boxes cannot be submitted while the round is paused or ended."
+                    : !gameStarted
+                    ? session?.isLeader
+                      ? "Start the game to begin the team timer."
+                      : "Waiting for the team leader to start the game."
                     : team?.answer_mode === "leader_only" &&
                       !session?.isLeader
                     ? "Only the team leader can submit answers in this mode."
@@ -613,7 +619,7 @@ export default function TeamDashboardPage() {
             )}
 
             <div className="flex items-center justify-end gap-3">
-              {!gameStarted && (
+              {!gameStarted && session?.isLeader && isIndividualStartRound && (
                 <button
                   type="button"
                   className="button-primary"

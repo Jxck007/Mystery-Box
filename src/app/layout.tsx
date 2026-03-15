@@ -27,6 +27,9 @@ const jetBrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Mystery Box Event",
   description: "Teams solve mystery tasks, open boxes, and earn points under admin oversight.",
+  icons: {
+    icon: "/Logo.jpg",
+  },
 };
 
 export default function RootLayout({

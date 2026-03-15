@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createAdminClient();
+  const GLOBAL_START_ROUNDS = new Set([3]);
 
   const { data: round, error: roundError } = await supabase
     .from("rounds")
@@ -199,7 +200,9 @@ export async function POST(request: NextRequest) {
 
     const payload: Record<string, unknown> = {
       status: "active",
-      started_at: new Date().toISOString(),
+      started_at: GLOBAL_START_ROUNDS.has(round.round_number ?? 0)
+        ? new Date().toISOString()
+        : null,
       elapsed_seconds: 0,
       paused_at: null,
       ended_by: null,

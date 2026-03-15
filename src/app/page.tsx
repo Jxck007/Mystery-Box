@@ -26,6 +26,12 @@ export default function HomePage() {
 
         <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
           <Link
+            href="/auth"
+            className="button-primary w-full sm:w-auto text-center"
+          >
+            Sign In
+          </Link>
+          <Link
             href="/create-team"
             className="button-primary w-full sm:w-auto text-center"
           >

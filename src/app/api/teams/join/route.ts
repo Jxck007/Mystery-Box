@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
+import { requireUser } from "@/lib/supabase-server";
 
 export async function POST(request: NextRequest) {
+  const auth = await requireUser(request);
+  if (!auth.user) {
+    return NextResponse.json(
+      { error: auth.error ?? "Unauthorized" },
+      { status: 401 },
+    );
+  }
   const body = await request.json().catch(() => null);
   if (!body) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
@@ -36,6 +44,25 @@ export async function POST(request: NextRequest) {
 
   if (!team.is_active) {
     return NextResponse.json({ error: "Team is not accepting new members" }, { status: 400 });
+  }
+
+  const { data: existingName, error: nameError } = await supabase
+    .from("players")
+    .select("id")
+    .eq("team_id", team.id)
+    .eq("display_name", trimmedDisplayName)
+    .limit(1)
+    .maybeSingle();
+
+  if (nameError) {
+    return NextResponse.json({ error: nameError.message }, { status: 500 });
+  }
+
+  if (existingName) {
+    return NextResponse.json(
+      { error: "That display name is already taken on this team" },
+      { status: 400 },
+    );
   }
 
   const { data: members } = await supabase

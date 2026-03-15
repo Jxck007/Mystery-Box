@@ -8,5 +8,5 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabaseBrowser = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: { persistSession: false, detectSessionInUrl: false },
+  auth: { persistSession: true, detectSessionInUrl: true },
 });

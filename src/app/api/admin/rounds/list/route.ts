@@ -6,6 +6,7 @@ export async function GET(request: Request) {
   const auth = requireAdmin(request);
   if (auth) return auth;
   const supabase = createAdminClient();
+  const GLOBAL_START_ROUNDS = new Set([3]);
   let { data, error } = await supabase
     .from("rounds")
     .select("*")
@@ -17,6 +18,9 @@ export async function GET(request: Request) {
 
   const now = Date.now();
   const updated = (data ?? []).map((round) => {
+    if (!GLOBAL_START_ROUNDS.has(round.round_number ?? 0)) {
+      return round;
+    }
     if (round.status === "active" && round.started_at && round.duration_seconds) {
       const startedAt = new Date(round.started_at).getTime();
       const elapsed = (round.elapsed_seconds ?? 0) * 1000;
@@ -37,7 +41,10 @@ export async function GET(request: Request) {
   });
 
   const endedIds = updated
-    .filter((round) => round.status === "ended")
+    .filter((round) =>
+      GLOBAL_START_ROUNDS.has(round.round_number ?? 0) &&
+      round.status === "ended",
+    )
     .map((round) => round.id);
 
   if (endedIds.length > 0) {

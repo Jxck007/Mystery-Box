@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "";
@@ -78,6 +79,11 @@ export default function AdminDashboardPage() {
   const [actionBusy, setActionBusy] = useState<Record<string, boolean>>({});
   const [gamesHealth, setGamesHealth] = useState<GamesHealth | null>(null);
   const [gamesHealthStatus, setGamesHealthStatus] = useState("");
+  const [rescueEmail, setRescueEmail] = useState("");
+  const [rescueLink, setRescueLink] = useState("");
+  const [rescueQr, setRescueQr] = useState("");
+  const [rescueStatus, setRescueStatus] = useState("");
+  const [rescueLoading, setRescueLoading] = useState(false);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -373,11 +379,15 @@ export default function AdminDashboardPage() {
     const missing = teams.filter((team) => !membersCache[team.id]);
     if (missing.length === 0) return;
     missing.forEach(async (team) => {
-      const response = await fetch(`/api/teams/${team.id}/players`);
-      const data = await response.json();
+      const response = await fetch(`/api/teams/${team.id}/players`, {
+        cache: "no-store",
+      });
+      const data = await response.json().catch(() => null);
       if (response.ok && Array.isArray(data)) {
         setMembersCache((prev) => ({ ...prev, [team.id]: data }));
+        return;
       }
+      setMembersCache((prev) => ({ ...prev, [team.id]: [] }));
     });
   }, [authorized, teams, membersCache]);
 
@@ -464,6 +474,21 @@ export default function AdminDashboardPage() {
     }, 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!rescueLink) {
+      setRescueQr("");
+      return;
+    }
+
+    QRCode.toDataURL(rescueLink, {
+      margin: 1,
+      width: 220,
+      color: { dark: "#0b1020", light: "#f8fafc" },
+    })
+      .then((url) => setRescueQr(url))
+      .catch(() => setRescueQr(""));
+  }, [rescueLink]);
 
   const formatTime = useCallback((seconds: number | null | undefined) => {
     if (seconds === null || seconds === undefined) return "--:--";
@@ -652,6 +677,74 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
+      <div className="card space-y-4">
+        <div>
+          <p className="label">Rescue access</p>
+          <h2 className="text-2xl font-semibold">Magic link fallback</h2>
+          <p className="text-sm text-slate-300">
+            Generate a one-time magic link if a player cannot receive email.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <input
+            className="input-field"
+            type="email"
+            placeholder="player@example.com"
+            value={rescueEmail}
+            onChange={(event) => setRescueEmail(event.target.value)}
+          />
+          <button
+            className="button-neutral"
+            type="button"
+            disabled={rescueLoading}
+            onClick={async () => {
+              setRescueStatus("");
+              setRescueLink("");
+              setRescueQr("");
+              setRescueLoading(true);
+              const response = await fetch("/api/admin/auth/link", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+                body: JSON.stringify({ email: rescueEmail, redirectTo: "/" }),
+              });
+              if (response.status === 401) {
+                handleUnauthorized();
+                return;
+              }
+              const data = await response.json();
+              if (!response.ok) {
+                setRescueStatus(data.error ?? "Unable to generate link");
+                setRescueLoading(false);
+                return;
+              }
+              setRescueLink(data.link ?? "");
+              setRescueStatus("Link ready. Share it with the player.");
+              setRescueLoading(false);
+            }}
+          >
+            {rescueLoading ? "Generating..." : "Generate link"}
+          </button>
+        </div>
+        {rescueStatus && <p className="text-sm text-slate-300">{rescueStatus}</p>}
+        {rescueLink && (
+          <div className="space-y-2">
+            <textarea className="input-field h-24" readOnly value={rescueLink} />
+            <button
+              className="button-muted"
+              type="button"
+              onClick={() => navigator.clipboard.writeText(rescueLink)}
+            >
+              Copy link
+            </button>
+            {rescueQr && (
+              <div className="rounded-xl border border-slate-700/50 bg-white p-3 inline-flex">
+                <img src={rescueQr} alt="Rescue QR code" width={220} height={220} />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="card space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -783,11 +876,13 @@ export default function AdminDashboardPage() {
                     <div className="text-sm text-slate-200">
                       {(team.member_count ?? 0)}/{team.max_members ?? "-"}
                     </div>
-                    {membersCache[team.id]?.length ? (
+                    {membersCache[team.id] ? (
                       <div className="mt-1 text-xs text-slate-300">
-                        {membersCache[team.id]
-                          .map((member) => member.display_name)
-                          .join(", ")}
+                        {membersCache[team.id].length
+                          ? membersCache[team.id]
+                              .map((member) => member.display_name)
+                              .join(", ")
+                          : "No members yet"}
                       </div>
                     ) : (
                       <div className="mt-1 text-xs text-slate-500">Loading members...</div>

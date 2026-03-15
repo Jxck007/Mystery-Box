@@ -14,6 +14,7 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminClient();
+  const GLOBAL_START_ROUNDS = new Set([3]);
   const { data: teamOverride, error: overrideError } = await supabase
     .from("team_rounds")
     .select("*, round:round_id(*)")
@@ -44,30 +45,36 @@ export async function GET(request: Request) {
     ? {
         ...roundData,
         status: teamOverride?.status ?? roundData.status,
-        started_at: teamOverride?.started_at ?? roundData.started_at,
+        started_at: teamOverride
+          ? teamOverride.started_at
+          : GLOBAL_START_ROUNDS.has(roundData.round_number ?? 0)
+          ? roundData.started_at
+          : null,
       }
     : null;
 
-  if (roundPayload) {
+  const usesGlobalTimer =
+    !teamOverride &&
+    GLOBAL_START_ROUNDS.has(roundPayload?.round_number ?? 0);
+
+  if (roundPayload && (teamOverride || usesGlobalTimer)) {
     const durationSeconds = roundPayload.duration_seconds ?? 0;
-    const overrideElapsed = teamOverride?.elapsed_seconds ?? 0;
-    const globalElapsed = roundPayload.elapsed_seconds ?? 0;
+    const elapsedBase = teamOverride
+      ? teamOverride.elapsed_seconds ?? 0
+      : roundPayload.elapsed_seconds ?? 0;
     let remaining: number | null = null;
 
     if (roundPayload.status === "active") {
       if (roundPayload.started_at) {
         const startedAt = new Date(roundPayload.started_at).getTime();
-        const elapsedBase = teamOverride ? overrideElapsed : globalElapsed;
         const totalElapsed = elapsedBase + Math.floor((Date.now() - startedAt) / 1000);
         remaining = Math.max(0, durationSeconds - totalElapsed);
       } else {
-        const elapsedBase = teamOverride ? overrideElapsed : globalElapsed;
         remaining = Math.max(0, durationSeconds - elapsedBase);
       }
     }
 
     if (roundPayload.status === "paused") {
-      const elapsedBase = teamOverride ? overrideElapsed : globalElapsed;
       remaining = Math.max(0, durationSeconds - elapsedBase);
     }
 
@@ -78,13 +85,7 @@ export async function GET(request: Request) {
       };
     }
 
-    if (!teamOverride && roundPayload.status === "active" && durationSeconds > 0 && remaining !== null && remaining <= 0) {
-      await supabase
-        .from("rounds")
-        .update({ status: "ended", ended_at: new Date().toISOString(), ended_by: "auto" })
-        .eq("id", roundPayload.id);
-      roundPayload = { ...roundPayload, status: "ended" };
-    }
+    // Team timers are per-team; do not auto-end global rounds here.
   }
 
   let openRecord: Record<string, unknown> | null = null;

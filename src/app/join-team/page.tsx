@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 type TeamPreview = {
   id: string;
@@ -19,6 +20,7 @@ export default function JoinTeamPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [fetchingTeams, setFetchingTeams] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   const fetchTeams = useCallback(async () => {
     setFetchingTeams(true);
@@ -37,14 +39,35 @@ export default function JoinTeamPage() {
     return () => window.clearTimeout(id);
   }, [fetchTeams]);
 
+  useEffect(() => {
+    const check = async () => {
+      const { data } = await supabaseBrowser.auth.getSession();
+      if (!data.session) {
+        router.replace("/auth?redirect=/join-team");
+        return;
+      }
+      setCheckingAuth(false);
+    };
+    check();
+  }, [router]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
     setLoading(true);
 
+    const { data } = await supabaseBrowser.auth.getSession();
+    if (!data.session) {
+      router.replace("/auth?redirect=/join-team");
+      return;
+    }
+
     const response = await fetch("/api/teams/join", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${data.session.access_token}`,
+      },
       body: JSON.stringify({
         displayName,
         teamCode: teamCode.toUpperCase(),
@@ -138,9 +161,9 @@ export default function JoinTeamPage() {
           <button
             type="submit"
             className="button-primary w-full"
-            disabled={loading}
+            disabled={loading || checkingAuth}
           >
-            {loading ? "Joining..." : "Join Team"}
+            {loading || checkingAuth ? "Joining..." : "Join Team"}
           </button>
         </form>
       </div>

@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { answerModes, randomTeamCode } from "@/lib/utils";
+import { requireUser } from "@/lib/supabase-server";
 
 const MAX_CODE_ATTEMPTS = 6;
 
 export async function POST(request: NextRequest) {
+  const auth = await requireUser(request);
+  if (!auth.user) {
+    return NextResponse.json(
+      { error: auth.error ?? "Unauthorized" },
+      { status: 401 },
+    );
+  }
   const body = await request.json().catch(() => null);
   if (!body) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
