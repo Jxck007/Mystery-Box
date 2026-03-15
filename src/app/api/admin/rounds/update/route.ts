@@ -84,6 +84,12 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (action === "start") {
+      await supabase
+        .from("box_opens")
+        .delete()
+        .eq("team_id", teamId)
+        .eq("round_id", round.id);
+
       if (existingLink) {
         await supabase
           .from("team_rounds")
@@ -192,6 +198,11 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "start") {
+    await supabase
+      .from("box_opens")
+      .delete()
+      .eq("round_id", round.id);
+
     await supabase
       .from("rounds")
       .update({ status: "ended" })

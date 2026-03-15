@@ -172,6 +172,14 @@ export default function TeamDashboardPage() {
 
   useEffect(() => {
     if (!session) return;
+    const intervalId = window.setInterval(() => {
+      fetchBoxes();
+    }, 3000);
+    return () => window.clearInterval(intervalId);
+  }, [session, fetchBoxes]);
+
+  useEffect(() => {
+    if (!session) return;
     const opensChannel = supabaseBrowser
       .channel(`opens-${session.teamId}`)
       .on(
@@ -255,10 +263,7 @@ export default function TeamDashboardPage() {
 
   const handleSubmit = async () => {
     if (!selectedGame || !session) return;
-    if (!modalAnswer.trim()) {
-      setModalError("Please describe what you completed.");
-      return;
-    }
+    const safeAnswer = modalAnswer.trim() || "Completed";
 
     setSubmitting(true);
     const response = await fetch("/api/boxes/submit", {
@@ -267,7 +272,7 @@ export default function TeamDashboardPage() {
       body: JSON.stringify({
         teamId: session.teamId,
         boxId: selectedGame.id,
-        submission: modalAnswer,
+        submission: safeAnswer,
         isLeader: session.isLeader,
       }),
     });
@@ -395,8 +400,8 @@ export default function TeamDashboardPage() {
             Back
           </button>
         </div>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
+        <details className="team-details" open>
+          <summary className="team-summary">
             <div>
               <p className="text-sm uppercase text-slate-400">Team</p>
               <h1 className="text-3xl font-semibold">{team?.name ?? "Team"}</h1>
@@ -410,58 +415,60 @@ export default function TeamDashboardPage() {
                 {team?.score ?? 0}
               </span>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-4 text-sm text-slate-300">
-            <p>
-              Members: {(team?.member_count ?? 0)}/{team?.max_members ?? "–"}
-            </p>
-            <p>
-              Leader: {team?.leader_name ?? session?.playerName ?? "–"}
-            </p>
-            <p>
-              Answer Mode: {team?.answer_mode === "leader_only" ? "Leader only" : "All members"}
-            </p>
-          </div>
-          {members.length > 0 && (
-            <div className="flex flex-wrap gap-2 text-xs text-slate-300">
-              {members.map((member) => {
-                const isYou =
-                  member.display_name.toLowerCase() ===
-                  (session?.playerName ?? "").toLowerCase();
-                const isLeader =
-                  member.display_name.toLowerCase() ===
-                  (team?.leader_name ?? "").toLowerCase();
-                return (
-                  <span key={member.id} className="member-pill">
-                    <span className="member-name">{member.display_name}</span>
-                    {isLeader && (
-                      <span className="role-pill role-leader">Leader</span>
-                    )}
-                    {isYou && <span className="role-pill role-you">You</span>}
-                  </span>
-                );
-              })}
+          </summary>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-4 text-sm text-slate-300">
+              <p>
+                Members: {(team?.member_count ?? 0)}/{team?.max_members ?? "–"}
+              </p>
+              <p>
+                Leader: {team?.leader_name ?? session?.playerName ?? "–"}
+              </p>
+              <p>
+                Answer Mode: {team?.answer_mode === "leader_only" ? "Leader only" : "All members"}
+              </p>
             </div>
-          )}
-          <div className="flex flex-wrap gap-3">
-            <button
-              className="button-muted inline-flex items-center"
-              onClick={() => {
-                if (team?.code) {
-                  navigator.clipboard.writeText(team.code);
-                }
-              }}
-            >
-              Copy Team Code
-            </button>
-            <button
-              className="button-primary"
-              onClick={() => router.push("/leaderboard")}
-            >
-              View Leaderboard
-            </button>
+            {members.length > 0 && (
+              <div className="flex flex-wrap gap-2 text-xs text-slate-300">
+                {members.map((member) => {
+                  const isYou =
+                    member.display_name.toLowerCase() ===
+                    (session?.playerName ?? "").toLowerCase();
+                  const isLeader =
+                    member.display_name.toLowerCase() ===
+                    (team?.leader_name ?? "").toLowerCase();
+                  return (
+                    <span key={member.id} className="member-pill">
+                      <span className="member-name">{member.display_name}</span>
+                      {isLeader && (
+                        <span className="role-pill role-leader">Leader</span>
+                      )}
+                      {isYou && <span className="role-pill role-you">You</span>}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-3">
+              <button
+                className="button-muted inline-flex items-center"
+                onClick={() => {
+                  if (team?.code) {
+                    navigator.clipboard.writeText(team.code);
+                  }
+                }}
+              >
+                Copy Team Code
+              </button>
+              <button
+                className="button-primary"
+                onClick={() => router.push("/leaderboard")}
+              >
+                View Leaderboard
+              </button>
+            </div>
           </div>
-        </div>
+        </details>
 
         {removedNotice && (
           <div className="banner ended">{removedNotice}</div>
@@ -513,30 +520,22 @@ export default function TeamDashboardPage() {
             onClick={handleBoxClick}
             disabled={opening || (round?.status !== "active" && !currentOpen)}
           >
-            <span className="text-5xl">
-              {round?.status !== "active" ? "🔒" : currentOpen ? "✅" : "🎁"}
-            </span>
-            <span className="text-lg font-semibold">Mystery Box</span>
+            <div className="mystery-box-3d">
+              <div className={`mystery-lid ${currentOpen ? "open" : ""}`}>
+                <span className="lid-glow" />
+              </div>
+              <div className="mystery-base">
+                <span className="box-face" />
+                <span className="box-badge">
+                  {round?.status !== "active" ? "Locked" : currentOpen ? "Opened" : "Tap"}
+                </span>
+              </div>
+            </div>
             {opening && (
               <span className="text-xs uppercase tracking-wide text-sky-300">
                 Opening...
               </span>
             )}
-            {currentOpen && (
-              <span className={statusStyles[currentOpen.status] ?? "status-pill"}>
-                {currentOpen.status}
-              </span>
-            )}
-            {gameStarted && timeLeft !== null && (
-              <span
-                className={`timer-pill ${timeLeft <= 10 ? "timer-danger" : ""}`}
-              >
-                Time left: {timeLeft}s
-              </span>
-            )}
-            <p className="text-xs text-slate-400">
-              {currentGame?.game_title ?? (currentOpen ? "Mystery game" : "Hidden game")}
-            </p>
           </button>
         </div>
       </div>

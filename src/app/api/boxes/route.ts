@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   const teamId = request.url
     ? new URL(request.url).searchParams.get("teamId")
@@ -83,6 +85,22 @@ export async function GET(request: Request) {
         ...roundPayload,
         remaining_seconds: remaining,
       };
+    }
+
+    if (teamOverride && roundPayload.status === "active" && remaining !== null && remaining <= 0) {
+      const nowIso = new Date().toISOString();
+      await supabase
+        .from("team_rounds")
+        .update({ status: "ended", ended_at: nowIso })
+        .eq("id", teamOverride.id);
+
+      await supabase.from("team_events").insert({
+        team_id: teamId,
+        event_type: "round",
+        message: "Time is up. Your round ended.",
+      });
+
+      roundPayload = { ...roundPayload, status: "ended", remaining_seconds: 0 };
     }
 
     // Team timers are per-team; do not auto-end global rounds here.

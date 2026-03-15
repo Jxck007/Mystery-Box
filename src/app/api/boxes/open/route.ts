@@ -124,7 +124,8 @@ export async function POST(request: NextRequest) {
   const { data: usedGames, error: usedError } = await supabase
     .from("box_opens")
     .select("box_id")
-    .eq("team_id", teamId);
+    .eq("team_id", teamId)
+    .eq("round_id", round.id);
 
   if (usedError) {
     return NextResponse.json({ error: usedError.message }, { status: 500 });

@@ -486,7 +486,7 @@ export default function AdminDashboardPage() {
       width: 220,
       color: { dark: "#0b1020", light: "#f8fafc" },
     })
-      .then((url) => setRescueQr(url))
+      .then((url: string) => setRescueQr(url))
       .catch(() => setRescueQr(""));
   }, [rescueLink]);
 
@@ -686,13 +686,22 @@ export default function AdminDashboardPage() {
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-          <input
-            className="input-field"
-            type="email"
-            placeholder="player@example.com"
-            value={rescueEmail}
-            onChange={(event) => setRescueEmail(event.target.value)}
-          />
+          <div className="space-y-2">
+            <label
+              className="block text-sm font-semibold text-slate-200"
+              htmlFor="rescue-email"
+            >
+              Player email
+            </label>
+            <input
+              id="rescue-email"
+              className="input-field"
+              type="email"
+              placeholder="player@example.com"
+              value={rescueEmail}
+              onChange={(event) => setRescueEmail(event.target.value)}
+            />
+          </div>
           <button
             className="button-neutral"
             type="button"
@@ -728,7 +737,18 @@ export default function AdminDashboardPage() {
         {rescueStatus && <p className="text-sm text-slate-300">{rescueStatus}</p>}
         {rescueLink && (
           <div className="space-y-2">
-            <textarea className="input-field h-24" readOnly value={rescueLink} />
+            <label
+              className="block text-sm font-semibold text-slate-200"
+              htmlFor="rescue-link"
+            >
+              Rescue link
+            </label>
+            <textarea
+              id="rescue-link"
+              className="input-field h-24"
+              readOnly
+              value={rescueLink}
+            />
             <button
               className="button-muted"
               type="button"
