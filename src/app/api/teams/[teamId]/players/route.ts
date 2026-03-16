@@ -1,13 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 import { createAdminClient } from "@/lib/supabase-admin";
 
 export async function GET(
-  request: Request,
-  { params }: { params: { teamId: string } },
+  request: NextRequest,
+  { params }: { params: Promise<{ teamId: string }> },
 ) {
-  const { teamId } = params;
+  const { teamId } = await params;
   if (!teamId) {
     return NextResponse.json({ error: "Team id is required" }, { status: 400 });
   }

@@ -1,10 +1,10 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-export default function AuthPage() {
+function AuthContent() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") ?? "/";
   const [email, setEmail] = useState("");
@@ -40,7 +40,7 @@ export default function AuthPage() {
   };
 
   return (
-    <main className="page-shell">
+    <>
       <div className="page-hero">
         <p className="label">Secure access</p>
         <h1 className="title">Sign in with email</h1>
@@ -96,6 +96,24 @@ export default function AuthPage() {
           </a>
         </div>
       </div>
+    </>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <main className="page-shell">
+      <Suspense
+        fallback={
+          <div className="card space-y-2 max-w-lg">
+            <p className="label">Secure access</p>
+            <h1 className="text-2xl font-semibold">Preparing login...</h1>
+            <p className="text-sm text-slate-300">Please wait.</p>
+          </div>
+        }
+      >
+        <AuthContent />
+      </Suspense>
     </main>
   );
 }

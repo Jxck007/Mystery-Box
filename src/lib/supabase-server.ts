@@ -8,6 +8,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export function createServerAuthClient() {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  }
   return createClient(supabaseUrl, supabaseAnonKey, {
     auth: { persistSession: false },
   });
