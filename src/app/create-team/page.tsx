@@ -56,17 +56,17 @@ export default function CreateTeamPage() {
       }),
     });
 
-    const data = await response.json();
+    const payload = await response.json();
 
     if (!response.ok) {
-      setError(data.error ?? "Unable to create team");
+      setError(payload.error ?? "Unable to create team");
       setLoading(false);
       return;
     }
 
-    localStorage.setItem("team_id", data.id);
-    localStorage.setItem("team_code", data.code);
-    localStorage.setItem("player_name", data.leader_name);
+    localStorage.setItem("team_id", payload.id);
+    localStorage.setItem("team_code", payload.code);
+    localStorage.setItem("player_name", payload.leader_name);
     localStorage.setItem("is_leader", "true");
     setLoading(false);
     router.push("/team");

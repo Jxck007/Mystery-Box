@@ -74,16 +74,16 @@ export default function JoinTeamPage() {
       }),
     });
 
-    const data = await response.json();
+    const payload = await response.json();
 
     if (!response.ok) {
-      setError(data.error ?? "Unable to join team");
+      setError(payload.error ?? "Unable to join team");
       setLoading(false);
       return;
     }
 
-    localStorage.setItem("team_id", data.id);
-    localStorage.setItem("team_code", data.code);
+    localStorage.setItem("team_id", payload.id);
+    localStorage.setItem("team_code", payload.code);
     localStorage.setItem("player_name", displayName);
     localStorage.setItem("is_leader", "false");
     setLoading(false);
