@@ -69,6 +69,7 @@ export default function TeamDashboardPage() {
   const router = useRouter();
   const INDIVIDUAL_START_ROUNDS = useMemo(() => new Set([1, 2]), []);
   const [session, setSession] = useState<SessionData | null>(null);
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamDetail | null>(null);
   const [currentGame, setCurrentGame] = useState<GameRecord | null>(null);
   const [currentOpen, setCurrentOpen] = useState<BoxOpen | null>(null);
@@ -78,7 +79,6 @@ export default function TeamDashboardPage() {
   const [loading, setLoading] = useState(false);
   const [opening, setOpening] = useState(false);
   const [selectedGame, setSelectedGame] = useState<GameRecord | null>(null);
-  const [modalAnswer, setModalAnswer] = useState("");
   const [modalError, setModalError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -157,6 +157,14 @@ export default function TeamDashboardPage() {
     }, 0);
     return () => window.clearTimeout(id);
   }, [router]);
+
+  useEffect(() => {
+    const readAuth = async () => {
+      const { data } = await supabaseBrowser.auth.getUser();
+      setAuthEmail(data.user?.email ?? null);
+    };
+    readAuth();
+  }, []);
 
   useEffect(() => {
     if (!session) {
@@ -263,7 +271,7 @@ export default function TeamDashboardPage() {
 
   const handleSubmit = async () => {
     if (!selectedGame || !session) return;
-    const safeAnswer = modalAnswer.trim() || "Completed";
+    const safeAnswer = "Completed";
 
     setSubmitting(true);
     const response = await fetch("/api/boxes/submit", {
@@ -292,27 +300,27 @@ export default function TeamDashboardPage() {
   useEffect(() => {
     if (!selectedGame) {
       const id = window.setTimeout(() => {
-        setModalAnswer("");
         setModalError("");
       }, 0);
       return () => window.clearTimeout(id);
     }
-
-    const id = window.setTimeout(() => {
-      setModalAnswer(currentOpen?.submitted_answer ?? "");
-    }, 0);
-    return () => window.clearTimeout(id);
-  }, [selectedGame, currentOpen]);
+  }, [selectedGame]);
 
   useEffect(() => {
     if (events.length === 0) {
       setVisibleEvents([]);
       return;
     }
-    setVisibleEvents(events);
+    const repeats = events.flatMap((event) =>
+      [0, 1, 2].map((index) => ({
+        ...event,
+        id: `${event.id}-${index}`,
+      })),
+    );
+    setVisibleEvents(repeats);
     const id = window.setTimeout(() => {
       setVisibleEvents([]);
-    }, 5000);
+    }, 3000);
     return () => window.clearTimeout(id);
   }, [events]);
 
@@ -345,6 +353,15 @@ export default function TeamDashboardPage() {
   const isIndividualStartRound = INDIVIDUAL_START_ROUNDS.has(
     round?.round_number ?? 0,
   );
+
+  const descriptionPoints = useMemo(() => {
+    const raw = selectedGame?.game_description ?? "";
+    return raw
+      .split(".")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => `${part}.`);
+  }, [selectedGame?.game_description]);
 
   useEffect(() => {
     if (!gameStarted || !gameStartAt || !round?.duration_seconds) {
@@ -417,6 +434,33 @@ export default function TeamDashboardPage() {
             </div>
           </summary>
           <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Profile</span>
+              <span className="member-pill">
+                <span className="member-name">{authEmail ?? "Signed in"}</span>
+              </span>
+              <button
+                type="button"
+                className="button-muted text-xs"
+                onClick={async () => {
+                  await supabaseBrowser.auth.signOut();
+                  setAuthEmail(null);
+                  router.push("/auth");
+                }}
+              >
+                Log out
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
+              <span className="text-xs uppercase tracking-wide text-slate-400">You</span>
+              <span className="member-pill">
+                <span className="member-name">{session?.playerName ?? "Player"}</span>
+                <span className="role-pill role-you">You</span>
+                {session?.isLeader && (
+                  <span className="role-pill role-leader">Leader</span>
+                )}
+              </span>
+            </div>
             <div className="flex flex-wrap gap-4 text-sm text-slate-300">
               <p>
                 Members: {(team?.member_count ?? 0)}/{team?.max_members ?? "–"}
@@ -566,7 +610,13 @@ export default function TeamDashboardPage() {
               )}
             </div>
 
-            <p className="text-gray-600">{selectedGame.game_description}</p>
+            <ul className="rule-list">
+              {descriptionPoints.length > 0 ? (
+                descriptionPoints.map((point) => <li key={point}>{point}</li>)
+              ) : (
+                <li>{selectedGame.game_description ?? "Complete the challenge."}</li>
+              )}
+            </ul>
 
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-sm font-semibold text-gray-500">
@@ -580,36 +630,20 @@ export default function TeamDashboardPage() {
               </span>
             </div>
 
-            <div className="space-y-2">
-              <label
-                className="text-sm font-semibold text-gray-700"
-                htmlFor="team-submit-answer"
-              >
-                Submit Answer
-              </label>
-              <textarea
-                id="team-submit-answer"
-                className="input-field h-32 resize-none"
-                value={modalAnswer}
-                onChange={(event) => setModalAnswer(event.target.value)}
-                disabled={!canSubmit}
-                placeholder="Describe what you completed"
-              />
-              {!canSubmit && (
-                <p className="text-xs text-gray-500">
-                  {round?.status !== "active"
-                    ? "Boxes cannot be submitted while the round is paused or ended."
-                    : !gameStarted
-                    ? session?.isLeader
-                      ? "Start the game to begin the team timer."
-                      : "Waiting for the team leader to start the game."
-                    : team?.answer_mode === "leader_only" &&
-                      !session?.isLeader
-                    ? "Only the team leader can submit answers in this mode."
-                    : ""}
-                </p>
-              )}
-            </div>
+            {!canSubmit && (
+              <p className="text-xs text-gray-500">
+                {round?.status !== "active"
+                  ? "Boxes cannot be submitted while the round is paused or ended."
+                  : !gameStarted
+                  ? session?.isLeader
+                    ? "Start the game to begin the team timer."
+                    : "Waiting for the team leader to start the game."
+                  : team?.answer_mode === "leader_only" &&
+                    !session?.isLeader
+                  ? "Only the team leader can submit answers in this mode."
+                  : ""}
+              </p>
+            )}
 
             {modalError && (
               <p className="text-sm text-red-600" role="alert">

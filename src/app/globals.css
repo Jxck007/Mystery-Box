@@ -365,7 +365,7 @@ body::before {
   background: rgba(56, 189, 248, 0.18);
   color: #e0f2fe;
   border: 1px solid rgba(56, 189, 248, 0.4);
-  animation: toast-pop 0.6s ease forwards;
+  animation: toast-pop 0.35s ease, toast-fade 0.4s ease 2.4s forwards;
 }
 
 .status-pending {
@@ -427,6 +427,17 @@ body::before {
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toast-fade {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
   }
 }
 
