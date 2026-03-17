@@ -363,7 +363,10 @@ body::before {
 }
 
 .game-option {
-  @apply button-muted text-sm;
+  @apply border rounded-md px-4 py-2 text-sm;
+  background: rgba(15, 23, 42, 0.7);
+  border-color: rgba(148, 163, 184, 0.25);
+  color: var(--text);
 }
 
 .game-input-row {
