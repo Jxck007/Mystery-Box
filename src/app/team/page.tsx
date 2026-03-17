@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 type GameRecord = {
@@ -68,7 +68,9 @@ export default function TeamDashboardPage() {
   const [currentOpen, setCurrentOpen] = useState<BoxOpen | null>(null);
   const [round, setRound] = useState<RoundRecord | null>(null);
   const [events, setEvents] = useState<TeamEvent[]>([]);
-  const [visibleEvents, setVisibleEvents] = useState<TeamEvent[]>([]);
+  const [edgeToast, setEdgeToast] = useState<TeamEvent | null>(null);
+  const lastEventIdRef = useRef<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [opening, setOpening] = useState(false);
   const [modalError, setModalError] = useState("");
@@ -199,6 +201,33 @@ export default function TeamDashboardPage() {
   }, [round, router]);
 
   useEffect(() => {
+    if (events.length === 0) return;
+    const latest = [...events]
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )[0];
+    if (!latest || latest.id === lastEventIdRef.current) return;
+    lastEventIdRef.current = latest.id;
+    setEdgeToast(latest);
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setEdgeToast(null);
+      toastTimerRef.current = null;
+    }, 2000);
+  }, [events]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!session) return;
     const intervalId = window.setInterval(() => {
       fetchBoxes();
@@ -287,18 +316,6 @@ export default function TeamDashboardPage() {
     setOpening(false);
   };
 
-  useEffect(() => {
-    if (events.length === 0) {
-      setVisibleEvents([]);
-      return;
-    }
-    setVisibleEvents(events.slice(0, 1));
-    const id = window.setTimeout(() => {
-      setVisibleEvents([]);
-    }, 3000);
-    return () => window.clearTimeout(id);
-  }, [events]);
-
   const roundBanner = useMemo(() => {
     if (!round) {
       return null;
@@ -320,6 +337,11 @@ export default function TeamDashboardPage() {
 
   return (
     <main className="page-shell space-y-6">
+      {edgeToast && (
+        <div className="edge-toast" role="status" aria-live="polite">
+          {edgeToast.message}
+        </div>
+      )}
       <div className="app-bar">
         <div className="app-bar-left">
           <img className="app-bar-logo" src="/Logo.jpg" alt="Mystery Box" />
@@ -431,16 +453,6 @@ export default function TeamDashboardPage() {
         {roundBanner}
 
         {modalError && <div className="banner ended">{modalError}</div>}
-
-        {visibleEvents.length > 0 && (
-          <div className="space-y-2">
-            {visibleEvents.map((event) => (
-              <div key={event.id} className="banner paused">
-                {event.message}
-              </div>
-            ))}
-          </div>
-        )}
 
         <div>
           <p className="label">Current round</p>
