@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const GLOBAL_START_ROUNDS = new Set([3]);
+  const GLOBAL_START_ROUNDS = new Set([1]);
   const { data: teamOverride, error: overrideError } = await supabase
     .from("team_rounds")
     .select("*, round:round_id(*)")

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { getMiniGameConfig, MiniGameRenderer } from "@/app/team/game-panels";
@@ -41,9 +41,8 @@ export default function GamePage() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const submittedRef = useRef(false);
 
-  const QUESTIONS_PER_GAME = 5;
-  const REQUIRED_CORRECT = 3;
   const totalSeconds = round?.duration_seconds ?? 0;
   const safeTimeLeft = timeLeft ?? totalSeconds;
   const progressPercent = totalSeconds
@@ -95,32 +94,66 @@ export default function GamePage() {
       setQuestionIndex(0);
       setCorrectCount(0);
       setFeedback(null);
+      submittedRef.current = false;
     };
     load();
   }, [teamId, boxId]);
 
   useEffect(() => {
-    if (!round?.started_at || !round?.duration_seconds) {
+    if (!round?.duration_seconds) {
       setTimeLeft(null);
       return;
     }
-    const startedAt = new Date(round.started_at).getTime();
-    const durationMs = round.duration_seconds * 1000;
-    const updateTimer = () => {
-      const remaining = Math.max(0, startedAt + durationMs - Date.now());
-      setTimeLeft(Math.ceil(remaining / 1000));
-    };
-    updateTimer();
-    const id = window.setInterval(updateTimer, 1000);
+    const startRemaining = round.remaining_seconds ?? round.duration_seconds;
+    setTimeLeft(startRemaining);
+    const id = window.setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev === null) return prev;
+        return Math.max(0, prev - 1);
+      });
+    }, 1000);
     return () => window.clearInterval(id);
-  }, [round?.started_at, round?.duration_seconds]);
+  }, [round?.duration_seconds, round?.remaining_seconds]);
 
   useEffect(() => {
-    if (!timeLeft) return;
-    if (timeLeft <= 0) {
+    if (timeLeft === null) return;
+    if (timeLeft > 0) return;
+    if (submittedRef.current || !teamId || !game) {
       router.replace("/team");
+      return;
     }
-  }, [timeLeft, router]);
+    const submitOnTimeout = async () => {
+      submittedRef.current = true;
+      setSubmitting(true);
+      const { data } = await supabaseBrowser.auth.getSession();
+      if (!data.session) {
+        setError("Please sign in again.");
+        setSubmitting(false);
+        return;
+      }
+      const response = await fetch("/api/boxes/complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.session.access_token}`,
+        },
+        body: JSON.stringify({
+          teamId,
+          boxId: game.id,
+          details: `${correctCount} correct`,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setError(payload.error ?? "Unable to submit score");
+        setSubmitting(false);
+        return;
+      }
+      setSubmitting(false);
+      router.replace("/team");
+    };
+    submitOnTimeout();
+  }, [timeLeft, teamId, game, correctCount, router]);
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -165,9 +198,6 @@ export default function GamePage() {
 
   return (
     <main className="page-shell game-shell game-page">
-      <div className="game-brand">
-        <img src="/Logo.jpg" alt="Mystery Box" />
-      </div>
       <div className="game-header">
         <div>
           <p className="label">Round {round?.round_number ?? 1}</p>
@@ -208,13 +238,14 @@ export default function GamePage() {
         </ul>
 
         <div className="text-sm text-slate-300">
-          Question {questionIndex + 1} of {QUESTIONS_PER_GAME}
+          Question {questionIndex + 1}
         </div>
 
         {isRoundOne && miniGameConfig && open?.status === "pending" && (
           <MiniGameRenderer
             gameKey={miniGameConfig.key}
             seed={`${open?.id ?? "seed"}-${game?.id ?? ""}-${questionIndex}`}
+            questionIndex={questionIndex}
             disabled={submitting}
             onComplete={async (result) => {
               if (!teamId || !game) return;
@@ -222,48 +253,7 @@ export default function GamePage() {
               const nextIndex = questionIndex + 1;
               setCorrectCount(nextCorrect);
               setFeedback(result.success ? "Correct." : "Not quite.");
-
-              if (nextIndex < QUESTIONS_PER_GAME) {
-                setQuestionIndex(nextIndex);
-                return;
-              }
-
-              if (nextCorrect < REQUIRED_CORRECT) {
-                setFeedback(
-                  `You got ${nextCorrect}/${QUESTIONS_PER_GAME}. Try again.`,
-                );
-                setQuestionIndex(0);
-                setCorrectCount(0);
-                return;
-              }
-
-              setSubmitting(true);
-              const { data } = await supabaseBrowser.auth.getSession();
-              if (!data.session) {
-                setError("Please sign in again.");
-                setSubmitting(false);
-                return;
-              }
-              const response = await fetch("/api/boxes/complete", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${data.session.access_token}`,
-                },
-                body: JSON.stringify({
-                  teamId,
-                  boxId: game.id,
-                  details: `${nextCorrect}/${QUESTIONS_PER_GAME} correct`,
-                }),
-              });
-              const payload = await response.json();
-              if (!response.ok) {
-                setError(payload.error ?? "Unable to submit score");
-                setSubmitting(false);
-                return;
-              }
-              setSubmitting(false);
-              router.replace("/team");
+              setQuestionIndex(nextIndex);
             }}
           />
         )}

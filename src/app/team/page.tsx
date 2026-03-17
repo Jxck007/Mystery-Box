@@ -466,6 +466,15 @@ export default function TeamDashboardPage() {
 
       {round?.round_number === 1 && (
         <div className="card space-y-4">
+          <div className="game-intro">
+            <div>
+              <p className="label">Game intro</p>
+              <p className="text-sm text-slate-300">
+                Ready to open the mystery box?
+              </p>
+            </div>
+            <img className="game-intro-logo" src="/Logo.jpg" alt="Mystery Box" />
+          </div>
           <div className="flex items-center justify-between">
             <div>
               <p className="label">Mystery box</p>

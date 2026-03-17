@@ -641,7 +641,9 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {rounds.map((round) => {
+          {rounds
+            .filter((round) => round.round_number === 1)
+            .map((round) => {
             const roundNumber = round.round_number ?? 0;
             const isAvailable = availableRounds.includes(roundNumber);
             const isSelected = roundNumber === (selectedRound?.round_number ?? 0);
@@ -726,12 +728,12 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
-      <div className="card space-y-4">
+      <div className="card space-y-6">
         <div>
-          <p className="label">Rescue access</p>
-          <h2 className="text-2xl font-semibold">Magic link fallback</h2>
+          <p className="label">Password management</p>
+          <h2 className="text-2xl font-semibold">Access &amp; codes</h2>
           <p className="text-sm text-slate-300">
-            Generate a one-time magic link if a player cannot receive email.
+            Manage rescue links and Round 2 keypad codes.
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
@@ -819,103 +821,107 @@ export default function AdminDashboardPage() {
           <div>
             <p className="label">Leaderboard</p>
             <h2 className="text-2xl font-semibold">Live standings</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              className="button-neutral text-sm"
-              onClick={async () => {
-                setLeaderboardRefreshing(true);
-                setLeaderboardStatus("Refreshing...");
-                await fetchLeaderboard();
-                setLeaderboardRefreshing(false);
-                setLeaderboardStatus("Up to date");
-                window.setTimeout(() => setLeaderboardStatus(""), 2000);
-              }}
-              disabled={refreshing || leaderboardRefreshing}
-            >
-              {leaderboardRefreshing ? "Refreshing..." : "Refresh"}
-            </button>
-            {leaderboardStatus && (
-              <span className="text-sm text-slate-300">{leaderboardStatus}</span>
-            )}
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="leaderboard-table">
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>Team</th>
-                <th>Members</th>
-                <th>Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leaderboard.map((team, index) => (
-                <tr key={team.id}>
-                  <td>{index + 1}</td>
-                  <td className="font-semibold text-slate-100">{team.name}</td>
-                  <td>
-                    {team.member_count ?? 0}
-                    {team.max_members ? `/${team.max_members}` : ""}
-                  </td>
-                  <td>{team.score ?? 0}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {leaderboard.length === 0 && (
-            <p className="text-sm text-slate-300">No teams yet.</p>
-          )}
-        </div>
-      </div>
 
-      <div className="card space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="label">Team manager</p>
-            <h2 className="text-2xl font-semibold">Teams &amp; scores</h2>
-          </div>
-          <p className="text-sm text-slate-300">
-            {teams.filter((team) => team.is_active).length} active teams
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="leaderboard-table">
-            <thead>
-              <tr>
-                <th>Team</th>
-                <th>Leader</th>
-                <th>Members</th>
-                <th>Score</th>
-                <th>Access</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {teams.map((team) => (
-                <tr key={team.id}>
-                  <td>
-                    <p className="font-semibold text-slate-100">{team.name}</p>
-                    {!team.is_active && (
-                      <span className="text-xs text-red-400">Inactive</span>
-                    )}
-                  </td>
-                  <td>{team.leader_name}</td>
-                  <td>
-                    <div className="text-sm text-slate-200">
-                      {(team.member_count ?? 0)}/{team.max_members ?? "-"}
-                    </div>
-                    {membersCache[team.id] ? (
-                      <div className="mt-1 text-xs text-slate-300">
-                        {membersCache[team.id].length
-                          ? membersCache[team.id]
-                              .map((member) => member.display_name)
-                              .join(", ")
-                          : "No members yet"}
+          <div className="border-t border-slate-700/50 pt-6 space-y-4">
+            <div>
+              <p className="label">Round 2 controls</p>
+              <h3 className="text-xl font-semibold">Per-team code keypad</h3>
+              <p className="text-sm text-slate-300">
+                Set the 4-digit code for each team. Codes unlock the Round 2 keypad.
+              </p>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {teams.map((team) => {
+                const input = round2Inputs[team.id] ?? "";
+                const lockUntil = team.round2_lock_until
+                  ? new Date(team.round2_lock_until).getTime()
+                  : null;
+                const lockRemaining = lockUntil
+                  ? Math.ceil((lockUntil - Date.now()) / 1000)
+                  : 0;
+                const lockLabel = lockRemaining > 0 ? `Locked ${lockRemaining}s` : "Unlocked";
+                const statusLabel = team.round2_solved_at
+                  ? team.round2_status === "qualified"
+                    ? "Qualified"
+                    : "Eliminated"
+                  : team.round2_code
+                  ? "Code ready"
+                  : "Awaiting";
+                const busyKey = `round2-${team.id}-code`;
+                const busy = actionBusy[busyKey];
+                return (
+                  <div
+                    key={team.id}
+                    className="rounded-2xl border border-slate-700/50 bg-slate-900/60 p-4 space-y-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-100">
+                          {team.name}
+                        </p>
                       </div>
-                    ) : (
-                      <div className="mt-1 text-xs text-slate-500">Loading members...</div>
+                      <div className="text-xs text-slate-300">{statusLabel}</div>
+                    </div>
+                    <div className="text-xs text-slate-400">Lock: {lockLabel}</div>
+                    <div className="text-xs text-slate-400">
+                      Current code: {team.round2_code ?? "--"}
+                    </div>
+                    <div className="code-panel">
+                      <div className="code-display">
+                        {Array.from({ length: 4 }).map((_, index) => (
+                          <span key={index} className="code-slot">
+                            {input[index] ?? "_"}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="code-keypad">
+                        {Array.from({ length: 10 }).map((_, index) => {
+                          const value = (index + 1) % 10;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              className="button-muted"
+                              onClick={() => {
+                                if (input.length < 4) {
+                                  setRound2Inputs((prev) => ({
+                                    ...prev,
+                                    [team.id]: `${input}${value}`,
+                                  }));
+                                }
+                              }}
+                            >
+                              {value}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="button-muted"
+                          onClick={() =>
+                            setRound2Inputs((prev) => ({ ...prev, [team.id]: "" }))
+                          }
+                        >
+                          Clear
+                        </button>
+                        <button
+                          type="button"
+                          className="button-primary"
+                          onClick={() => handleRound2Code(team.id, input, busyKey)}
+                          disabled={input.length !== 4 || busy}
+                        >
+                          {busy ? "Saving..." : "Set Code"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          </div>
                     )}
                   </td>
                   <td>{team.score ?? 0}</td>
