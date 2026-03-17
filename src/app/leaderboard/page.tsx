@@ -33,10 +33,9 @@ export default function LeaderboardPage() {
   useEffect(() => {
     const id = window.setTimeout(() => {
       const teamId = localStorage.getItem("team_id");
-      const teamCode = localStorage.getItem("team_code");
       const playerName = localStorage.getItem("player_name");
 
-      if (!teamId || !teamCode || !playerName) {
+      if (!teamId || !playerName) {
         router.push("/");
         return;
       }

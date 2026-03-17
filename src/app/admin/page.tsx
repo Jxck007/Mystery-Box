@@ -9,12 +9,10 @@ const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "";
 type TeamDetail = {
   id: string;
   name: string;
-  code: string;
   leader_name: string;
   score: number;
   member_count?: number;
   max_members?: number;
-  answer_mode: "leader_only" | "all_members";
   is_active?: boolean;
   current_round_status?: string | null;
   current_round_number?: number | null;
@@ -887,7 +885,6 @@ export default function AdminDashboardPage() {
             <thead>
               <tr>
                 <th>Team</th>
-                <th>Code</th>
                 <th>Leader</th>
                 <th>Members</th>
                 <th>Score</th>
@@ -904,7 +901,6 @@ export default function AdminDashboardPage() {
                       <span className="text-xs text-red-400">Inactive</span>
                     )}
                   </td>
-                  <td>{team.code}</td>
                   <td>{team.leader_name}</td>
                   <td>
                     <div className="text-sm text-slate-200">
@@ -1115,7 +1111,6 @@ export default function AdminDashboardPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold text-slate-100">{team.name}</p>
-                    <p className="text-xs text-slate-400">Team code: {team.code}</p>
                   </div>
                   <div className="text-xs text-slate-300">{statusLabel}</div>
                 </div>

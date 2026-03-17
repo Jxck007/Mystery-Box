@@ -69,12 +69,6 @@ export default function HomePage() {
           >
             Create Team
           </Link>
-          <Link
-            href="/join-team"
-            className="button-muted w-full sm:w-auto text-center"
-          >
-            Join Team
-          </Link>
         </div>
 
         <Link href="/admin" className="text-sm text-sky-300 underline">

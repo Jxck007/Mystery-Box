@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   const supabase = createAdminClient();
   const { data: player, error } = await supabase
     .from("players")
-    .select("id, display_name, team:team_id(id, name, code, leader_name)")
+    .select("id, display_name, team:team_id(id, name, leader_name)")
     .eq("user_id", auth.user.id)
     .maybeSingle();
 

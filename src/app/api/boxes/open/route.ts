@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
       .update({ boxes_opened: (teamRound.boxes_opened ?? 0) + 1 })
       .eq("id", teamRound.id);
   } else {
-    await supabase.from("team_rounds").insert({
+    const { error: insertError } = await supabase.from("team_rounds").insert({
       team_id: teamId,
       round_id: round.id,
       boxes_opened: 1,
@@ -204,6 +204,28 @@ export async function POST(request: NextRequest) {
       status: "active",
       started_at: null,
     });
+
+    if (insertError) {
+      if (insertError.code === "23505") {
+        const { data: existingRound } = await supabase
+          .from("team_rounds")
+          .select("id, boxes_opened")
+          .eq("team_id", teamId)
+          .eq("round_id", round.id)
+          .maybeSingle();
+        if (existingRound) {
+          await supabase
+            .from("team_rounds")
+            .update({ boxes_opened: (existingRound.boxes_opened ?? 0) + 1 })
+            .eq("id", existingRound.id);
+        }
+      } else {
+        return NextResponse.json(
+          { error: insertError.message },
+          { status: 500 },
+        );
+      }
+    }
   }
 
   return NextResponse.json({

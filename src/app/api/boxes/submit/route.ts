@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { teamId, boxId, submission, isLeader } = body;
+  const { teamId, boxId, submission } = body;
   const trimmedSubmission =
     typeof submission === "string" ? submission.trim() : "";
 
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient();
   const { data: team, error: teamError } = await supabase
     .from("teams")
-    .select("id, answer_mode")
+    .select("id")
     .eq("id", teamId)
     .maybeSingle();
 
@@ -36,13 +36,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: teamError?.message ?? "Team not found" },
       { status: 404 },
-    );
-  }
-
-  if (team.answer_mode === "leader_only" && isLeader !== true) {
-    return NextResponse.json(
-      { error: "Only the team leader can submit answers." },
-      { status: 403 },
     );
   }
 

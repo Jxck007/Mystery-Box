@@ -63,6 +63,34 @@ body::before {
   gap: 24px;
 }
 
+.app-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.app-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-bar-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.app-bar-title {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .card {
   background: var(--card);
   border: 1px solid var(--card-border);
@@ -127,12 +155,15 @@ body::before {
 }
 
 .mystery-box {
-  @apply rounded-2xl p-6 flex flex-col items-center justify-center gap-3 text-center cursor-pointer;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  min-height: 220px;
-  width: min(100%, 320px);
-  transition: border-color 0.2s ease;
+  @apply rounded-2xl p-6 flex flex-col items-center justify-center gap-2 text-center cursor-pointer;
+  background: linear-gradient(145deg, #f59e0b, #fbbf24 55%, #f97316);
+  border: 2px solid #fef3c7;
+  min-height: 240px;
+  width: min(100%, 300px);
+  position: relative;
+  color: #1f2937;
+  box-shadow: 0 18px 30px -18px rgba(251, 191, 36, 0.8);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .mystery-box::before {
@@ -147,17 +178,20 @@ body::before {
 }
 
 .mystery-box.opened {
-  border-color: rgba(125, 211, 252, 0.4);
+  border-color: #fcd34d;
+  box-shadow: 0 22px 40px -18px rgba(251, 191, 36, 0.9);
 }
 
 .mystery-icon {
-  font-size: 48px;
+  font-size: 42px;
+  font-weight: 800;
+  color: #111827;
 }
 
 .box-badge {
   @apply inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide;
-  background: rgba(125, 211, 252, 0.18);
-  color: #e0f2fe;
+  background: rgba(15, 23, 42, 0.2);
+  color: #0f172a;
 }
 
 .box-meta {
@@ -182,8 +216,8 @@ body::before {
 .mystery-box.opening {
   position: relative;
   overflow: hidden;
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 18px 40px -24px rgba(37, 99, 235, 0.7);
+  transform: translateY(-4px) scale(1.04);
+  box-shadow: 0 24px 50px -18px rgba(251, 191, 36, 0.9);
   animation: box-pop 0.9s ease;
 }
 
@@ -192,8 +226,50 @@ body::before {
   position: absolute;
   inset: -60% 10% auto 10%;
   height: 120%;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.25), transparent 60%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.55), transparent 60%);
   animation: box-shine 1s ease;
+}
+
+.mystery-box::before,
+.mystery-box::after {
+  content: "";
+  position: absolute;
+  border-radius: 18px;
+  pointer-events: none;
+}
+
+.mystery-box::before {
+  inset: 8px;
+  border: 2px solid rgba(120, 53, 15, 0.25);
+}
+
+.mystery-box::after {
+  inset: 16px;
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+}
+
+.round2-page {
+  max-width: 1100px;
+  min-height: 100vh;
+  padding: 40px 5vw;
+}
+
+.round2-card {
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.5);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.round2-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .modal-overlay {
@@ -307,6 +383,12 @@ body::before {
   max-width: 1100px;
 }
 
+.game-page {
+  min-height: 100vh;
+  max-width: none;
+  padding: 32px 5vw 48px;
+}
+
 .game-header {
   display: flex;
   align-items: center;
@@ -336,6 +418,49 @@ body::before {
 
 .game-card {
   min-height: 420px;
+}
+
+.game-surface {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 24px;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.game-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 160px;
+}
+
+.timer-number {
+  font-size: clamp(28px, 3vw, 40px);
+  font-weight: 700;
+  color: #e0f2fe;
+}
+
+.timer-bar {
+  width: 180px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+  overflow: hidden;
+}
+
+.timer-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #34d399);
+  transition: width 0.4s ease;
+}
+
+.game-feedback {
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #e0f2fe;
+  font-weight: 600;
 }
 
 .game-warning {

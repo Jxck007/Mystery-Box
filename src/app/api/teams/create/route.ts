@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { answerModes, randomTeamCode } from "@/lib/utils";
 import { requireUser } from "@/lib/supabase-server";
-
-const MAX_CODE_ATTEMPTS = 6;
 
 export async function POST(request: NextRequest) {
   const auth = await requireUser(request);
@@ -18,13 +15,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { teamName, leaderName, maxMembers, answerMode } = body;
+  const { teamName, leaderName, maxMembers, memberNames } = body;
   const trimmedTeam = typeof teamName === "string" ? teamName.trim() : "";
   const trimmedLeader = typeof leaderName === "string" ? leaderName.trim() : "";
   const parsedMaxMembers = 4;
-  const normalizedMode = answerModes.includes(answerMode)
-    ? answerMode
-    : "leader_only";
+  const rawMembers = Array.isArray(memberNames) ? memberNames : [];
+  const cleanedMembers = rawMembers
+    .map((name) => (typeof name === "string" ? name.trim() : ""))
+    .filter(Boolean);
+  const teamRoster = Array.from(
+    new Set([trimmedLeader, ...cleanedMembers].map((name) => name.trim())),
+  ).filter(Boolean);
+
+  if (teamRoster.length > parsedMaxMembers) {
+    return NextResponse.json(
+      { error: "Team can have up to 4 members" },
+      { status: 400 },
+    );
+  }
 
   if (!trimmedTeam) {
     return NextResponse.json({ error: "Team name is required" }, { status: 400 });
@@ -42,26 +50,6 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createAdminClient();
-
-  let teamCode = randomTeamCode();
-  for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
-    const { data: matches, error } = await supabase
-      .from("teams")
-      .select("id")
-      .eq("code", teamCode)
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    if (!matches) {
-      break;
-    }
-
-    teamCode = randomTeamCode();
-  }
 
   const { data: existingPlayer, error: existingError } = await supabase
     .from("players")
@@ -84,11 +72,9 @@ export async function POST(request: NextRequest) {
     .from("teams")
     .insert({
       name: trimmedTeam,
-      code: teamCode,
       leader_name: trimmedLeader,
       score: 0,
       max_members: parsedMaxMembers,
-      answer_mode: normalizedMode,
       is_active: true,
     })
     .select()
@@ -101,11 +87,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await supabase.from("players").insert({
+  const playerRows = teamRoster.map((name) => ({
     team_id: team.id,
-    display_name: trimmedLeader,
-    user_id: auth.user.id,
-  });
+    display_name: name,
+    user_id: name === trimmedLeader ? auth.user.id : null,
+  }));
+
+  await supabase.from("players").insert(playerRows);
 
   return NextResponse.json(team);
 }

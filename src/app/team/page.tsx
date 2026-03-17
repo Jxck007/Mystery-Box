@@ -1,9 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { getMiniGameConfig } from "@/app/team/game-panels";
 
 type GameRecord = {
   id: string;
@@ -11,11 +10,10 @@ type GameRecord = {
   game_description: string | null;
   game_type: string | null;
   points_value: number | null;
-                  setRound2Status(
-                    payload.qualified
-                      ? "Code accepted. You qualified for Round 3."
-                      : "Code accepted, but slots are full.",
-                  );
+  round_number?: number | null;
+};
+
+type BoxOpen = {
   id: string;
   box_id: string;
   status: "pending" | "approved" | "rejected";
@@ -29,52 +27,40 @@ type RoundRecord = {
   status: "waiting" | "active" | "paused" | "ended";
   started_at?: string | null;
   ended_at?: string | null;
-      {round?.round_number === 1 && (
-        <div className="card space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="label">Mystery box</p>
-              <h2 className="text-2xl font-semibold">Open the box</h2>
-            </div>
-            {loading && (
-              <p className="text-sm text-slate-300">Refreshing boxes…</p>
-            )}
-          </div>
-
-          <div className="mystery-grid">
-            <button
-              type="button"
-              className={`mystery-box ${
-                round?.status !== "active" ? "locked" : currentOpen ? "opened" : ""
-              } ${opening ? "opening" : ""}`}
-              onClick={handleBoxClick}
-              disabled={opening || (round?.status !== "active" && !currentOpen)}
-            >
-              <div className="mystery-icon">381</div>
-              <span className="box-badge">
-                {round?.status !== "active" ? "Locked" : currentOpen ? "Opened" : "Open"}
-              </span>
-              {opening && (
-                <span className="text-xs uppercase tracking-wide text-sky-300">
-                  Opening...
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
-  isLeader: boolean;
+  duration_seconds?: number | null;
+  round_number?: number | null;
+  elapsed_seconds?: number | null;
+  remaining_seconds?: number | null;
 };
 
-const statusStyles: Record<string, string> = {
-  pending: "status-pill status-pending",
-  approved: "status-pill status-approved",
-  rejected: "status-pill status-rejected",
+type TeamEvent = {
+  id: string;
+  event_type: string;
+  message: string;
+  created_at: string;
+};
+
+type TeamDetail = {
+  id: string;
+  name: string;
+  leader_name: string;
+  score: number;
+  member_count?: number;
+  max_members?: number;
+  round2_code?: string | null;
+  round2_lock_until?: string | null;
+  round2_solved_at?: string | null;
+  round2_status?: string | null;
+};
+
+type SessionData = {
+  teamId: string;
+  playerName: string;
+  isLeader: boolean;
 };
 
 export default function TeamDashboardPage() {
   const router = useRouter();
-  const INDIVIDUAL_START_ROUNDS = useMemo(() => new Set([1, 2]), []);
   const [session, setSession] = useState<SessionData | null>(null);
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamDetail | null>(null);
@@ -85,15 +71,8 @@ export default function TeamDashboardPage() {
   const [visibleEvents, setVisibleEvents] = useState<TeamEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [opening, setOpening] = useState(false);
-  const [selectedGame, setSelectedGame] = useState<GameRecord | null>(null);
   const [modalError, setModalError] = useState("");
-  const [round2Code, setRound2Code] = useState("");
-  const [round2Status, setRound2Status] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [removedNotice, setRemovedNotice] = useState("");
-  const [gameStarted, setGameStarted] = useState(false);
-  const [gameStartAt, setGameStartAt] = useState<number | null>(null);
   const [members, setMembers] = useState<
     { id: string; display_name: string; joined_at: string }[]
   >([]);
@@ -114,7 +93,6 @@ export default function TeamDashboardPage() {
     } else if (payload.code === "TEAM_REMOVED") {
       setRemovedNotice("Your team was removed by the admin.");
       localStorage.removeItem("team_id");
-      localStorage.removeItem("team_code");
       localStorage.removeItem("player_name");
       localStorage.removeItem("is_leader");
       router.push("/");
@@ -150,11 +128,10 @@ export default function TeamDashboardPage() {
   useEffect(() => {
     const id = window.setTimeout(() => {
       const storedTeamId = localStorage.getItem("team_id");
-      const storedTeamCode = localStorage.getItem("team_code");
       const storedPlayer = localStorage.getItem("player_name");
       const leaderFlag = localStorage.getItem("is_leader");
 
-      if (!storedTeamId || !storedTeamCode || !storedPlayer) {
+      if (!storedTeamId || !storedPlayer) {
         supabaseBrowser.auth.getSession().then(async ({ data }) => {
           if (!data.session) {
             router.push("/");
@@ -169,7 +146,6 @@ export default function TeamDashboardPage() {
             return;
           }
           localStorage.setItem("team_id", payload.team.id);
-          localStorage.setItem("team_code", payload.team.code);
           localStorage.setItem("player_name", payload.display_name);
           localStorage.setItem(
             "is_leader",
@@ -177,7 +153,6 @@ export default function TeamDashboardPage() {
           );
           setSession({
             teamId: payload.team.id,
-            teamCode: payload.team.code,
             playerName: payload.display_name,
             isLeader: payload.team.leader_name === payload.display_name,
           });
@@ -187,7 +162,6 @@ export default function TeamDashboardPage() {
 
       setSession({
         teamId: storedTeamId,
-        teamCode: storedTeamCode,
         playerName: storedPlayer,
         isLeader: leaderFlag === "true",
       });
@@ -214,6 +188,15 @@ export default function TeamDashboardPage() {
     }, 0);
     return () => window.clearTimeout(id);
   }, [session, fetchBoxes, fetchTeam, fetchMembers]);
+
+  useEffect(() => {
+    if (!round || round.status !== "active") return;
+    if (round.round_number === 2) {
+      router.replace("/round2");
+    } else if (round.round_number === 3) {
+      router.replace("/leaderboard");
+    }
+  }, [round, router]);
 
   useEffect(() => {
     if (!session) return;
@@ -293,15 +276,10 @@ export default function TeamDashboardPage() {
     if (response.ok) {
       setCurrentGame(payload.game ?? null);
       setCurrentOpen(payload.open ?? null);
-      setSelectedGame(payload.game ?? null);
       if (payload.game?.id) {
         router.push(`/game/${payload.game.id}`);
       }
       setModalError("");
-      if (INDIVIDUAL_START_ROUNDS.has(round?.round_number ?? 0)) {
-        setGameStarted(false);
-        setGameStartAt(null);
-      }
     } else {
       setModalError(payload.error ?? "Unable to open game");
     }
@@ -309,62 +287,17 @@ export default function TeamDashboardPage() {
     setOpening(false);
   };
 
-  const handleSubmit = async () => {
-    if (!selectedGame || !session) return;
-    const safeAnswer = "Completed";
-
-    setSubmitting(true);
-    const response = await fetch("/api/boxes/submit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        teamId: session.teamId,
-        boxId: selectedGame.id,
-        submission: safeAnswer,
-        isLeader: session.isLeader,
-      }),
-    });
-
-    const payload = await response.json();
-    if (!response.ok) {
-      setModalError(payload.error ?? "Unable to submit answer");
-      setSubmitting(false);
-      return;
-    }
-
-    setModalError("");
-    await fetchBoxes();
-    setSubmitting(false);
-  };
-
-  useEffect(() => {
-    if (!selectedGame) {
-      const id = window.setTimeout(() => {
-        setModalError("");
-      }, 0);
-      return () => window.clearTimeout(id);
-    }
-  }, [selectedGame]);
-
   useEffect(() => {
     if (events.length === 0) {
       setVisibleEvents([]);
       return;
     }
-    const repeats = events.flatMap((event) =>
-      [0, 1, 2].map((index) => ({
-        ...event,
-        id: `${event.id}-${index}`,
-      })),
-    );
-    setVisibleEvents(repeats);
+    setVisibleEvents(events.slice(0, 1));
     const id = window.setTimeout(() => {
       setVisibleEvents([]);
     }, 3000);
     return () => window.clearTimeout(id);
   }, [events]);
-
-  const modalOpen = selectedGame ? currentOpen : null;
 
   const roundBanner = useMemo(() => {
     if (!round) {
@@ -385,148 +318,56 @@ export default function TeamDashboardPage() {
     return null;
   }, [round]);
 
-  const canSubmit =
-    round?.status === "active" &&
-    gameStarted &&
-    (team?.answer_mode === "all_members" || session?.isLeader);
+  return (
+    <main className="page-shell space-y-6">
+      <div className="app-bar">
+        <div className="app-bar-left">
+          <img className="app-bar-logo" src="/Logo.jpg" alt="Mystery Box" />
+          <span className="app-bar-title">Mystery Box</span>
+        </div>
+        <div className="app-bar-right">
+          <span className="label">Team hub</span>
+        </div>
+      </div>
+      <div className="page-hero">
+        <p className="label">Team hub</p>
+        <h1 className="title">Welcome back</h1>
+        <p className="subtitle">
+          Lead your crew through each round. Only the leader device is required.
+        </p>
+      </div>
 
-  const isIndividualStartRound = INDIVIDUAL_START_ROUNDS.has(
-      {round?.round_number === 2 && round?.status === "active" && (
-  );
+      <div className="card space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="label">Account</p>
+            <h2 className="text-2xl font-semibold">Team dashboard</h2>
+          </div>
+          <div className="text-sm text-slate-300">
+            {authEmail ? `Signed in as ${authEmail}` : ""}
+          </div>
+        </div>
 
-  const descriptionPoints = useMemo(() => {
-    const raw = selectedGame?.game_description ?? "";
-    return raw
-      .split(".")
-      .map((part) => part.trim())
-          {!team?.round2_code ? (
-            <div className="banner paused">
-              Waiting for the admin to set your Round 2 code.
+        <details className="team-details" open>
+          <summary className="team-summary">
+            <div>
+              <p className="label">Team</p>
+              <h2 className="text-2xl font-semibold">{team?.name ?? "--"}</h2>
             </div>
-          ) : team?.round2_solved_at ? (
-            <div className="banner paused">
-              Code solved. {team.round2_status === "qualified"
-                ? "You qualified for Round 3."
-                : "Slots were full."}
-            </div>
-          ) : (
-            <div className="code-panel">
-              <div className="code-display">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <span key={index} className="code-slot">
-                    {round2Code[index] ?? "_"}
-                  </span>
-                ))}
-              </div>
-              <div className="code-keypad">
-                {Array.from({ length: 10 }).map((_, index) => {
-                  const value = (index + 1) % 10;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      className="button-muted"
-                      onClick={() => {
-                        if (round2Code.length < 4) {
-                          setRound2Code(`${round2Code}${value}`);
-                        }
-                      }}
-                    >
-                      {value}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="button-muted"
-                  onClick={() => setRound2Code("")}
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  className="button-primary"
-                  onClick={async () => {
-                    setRound2Status("");
-                    const { data } = await supabaseBrowser.auth.getSession();
-                    if (!data.session) {
-                      setRound2Status("Please sign in again.");
-                      return;
-                    }
-                    const response = await fetch("/api/round2/submit", {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${data.session.access_token}`,
-                      },
-                      body: JSON.stringify({ code: round2Code }),
-                    });
-                    const payload = await response.json();
-                    if (!response.ok) {
-                      setRound2Status(payload.error ?? "Unable to submit code");
-                      return;
-                    }
-                    setRound2Status(
-                      payload.qualified
-                        ? "Code accepted. You qualified for Round 3."
-                        : "Code accepted, but slots are full.",
-                    );
-                  }}
-                  disabled={round2Code.length !== 4}
-                >
-                  Submit Code
-                </button>
-              </div>
-              {round2Status && (
-                <p className="text-sm text-slate-300">{round2Status}</p>
-              )}
-            </div>
-          )}
             <div className="flex items-center gap-3 text-sm">
               <span className="uppercase tracking-wide text-slate-400">Score</span>
               <span className="text-4xl font-bold text-sky-300">
-      {round?.round_number !== 2 && (
-        <div className="card space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="label">Mystery box</p>
-              <h2 className="text-2xl font-semibold">Open the box</h2>
-            </div>
-            {loading && (
-              <p className="text-sm text-slate-300">Refreshing boxes…</p>
-            )}
-          </div>
-
-          <div className="mystery-grid">
-            <button
-              type="button"
-              className={`mystery-box ${
-                round?.status !== "active" ? "locked" : currentOpen ? "opened" : ""
-              } ${opening ? "opening" : ""}`}
-              onClick={handleBoxClick}
-              disabled={opening || (round?.status !== "active" && !currentOpen)}
-            >
-              <div className="mystery-icon">381</div>
-              <span className="box-badge">
-                {round?.status !== "active" ? "Locked" : currentOpen ? "Opened" : "Open"}
+                {team?.score ?? 0}
               </span>
-              {opening && (
-                <span className="text-xs uppercase tracking-wide text-sky-300">
-                  Opening...
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
+            </div>
+          </summary>
+          <div className="mt-4 space-y-3">
             <div className="flex flex-wrap gap-4 text-sm text-slate-300">
               <p>
-                Members: {(team?.member_count ?? 0)}/{team?.max_members ?? "–"}
+                Members: {(team?.member_count ?? 0)}/{team?.max_members ?? "-"}
               </p>
               <p>
-                Leader: {team?.leader_name ?? session?.playerName ?? "–"}
+                Leader: {team?.leader_name ?? session?.playerName ?? "-"}
               </p>
             </div>
             {members.length > 0 && (
@@ -552,14 +393,17 @@ export default function TeamDashboardPage() {
                           onClick={async () => {
                             const { data } = await supabaseBrowser.auth.getSession();
                             if (!data.session) return;
-                            await fetch(`/api/teams/${session.teamId}/players/remove`, {
-                              method: "POST",
-                              headers: {
-                                "Content-Type": "application/json",
-                                Authorization: `Bearer ${data.session.access_token}`,
+                            await fetch(
+                              `/api/teams/${session.teamId}/players/remove`,
+                              {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  Authorization: `Bearer ${data.session.access_token}`,
+                                },
+                                body: JSON.stringify({ playerId: member.id }),
                               },
-                              body: JSON.stringify({ playerId: member.id }),
-                            });
+                            );
                             fetchMembers();
                           }}
                         >
@@ -573,16 +417,6 @@ export default function TeamDashboardPage() {
             )}
             <div className="flex flex-wrap gap-3">
               <button
-                className="button-muted inline-flex items-center"
-                onClick={() => {
-                  if (team?.code) {
-                    navigator.clipboard.writeText(team.code);
-                  }
-                }}
-              >
-                Copy Team Code
-              </button>
-              <button
                 className="button-primary"
                 onClick={() => router.push("/leaderboard")}
               >
@@ -592,15 +426,11 @@ export default function TeamDashboardPage() {
           </div>
         </details>
 
-        {removedNotice && (
-          <div className="banner ended">{removedNotice}</div>
-        )}
+        {removedNotice && <div className="banner ended">{removedNotice}</div>}
 
         {roundBanner}
 
-        {modalError && !selectedGame && (
-          <div className="banner ended">{modalError}</div>
-        )}
+        {modalError && <div className="banner ended">{modalError}</div>}
 
         {visibleEvents.length > 0 && (
           <div className="space-y-2">
@@ -622,126 +452,40 @@ export default function TeamDashboardPage() {
         </div>
       </div>
 
-      {round?.round_number === 2 && round?.status === "active" && (
+      {round?.round_number === 1 && (
         <div className="card space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="label">Round 2 access</p>
-              <h2 className="text-2xl font-semibold">Enter the 4-digit code</h2>
+              <p className="label">Mystery box</p>
+              <h2 className="text-2xl font-semibold">Open the box</h2>
             </div>
-          </div>
-          <div className="code-panel">
-            <div className="code-display">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <span key={index} className="code-slot">
-                  {round2Code[index] ?? "_"}
-                </span>
-              ))}
-            </div>
-            <div className="code-keypad">
-              {Array.from({ length: 10 }).map((_, index) => {
-                const value = (index + 1) % 10;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    className="button-muted"
-                    onClick={() => {
-                      if (round2Code.length < 4) {
-                        setRound2Code(`${round2Code}${value}`);
-                      }
-                    }}
-                  >
-                    {value}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="button-muted"
-                onClick={() => setRound2Code("")}
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                className="button-primary"
-                onClick={async () => {
-                  setRound2Status("");
-                  const { data } = await supabaseBrowser.auth.getSession();
-                  if (!data.session) {
-                    setRound2Status("Please sign in again.");
-                    return;
-                  }
-                  const response = await fetch("/api/round2/submit", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${data.session.access_token}`,
-                    },
-                    body: JSON.stringify({ code: round2Code }),
-                  });
-                  const payload = await response.json();
-                  if (!response.ok) {
-                    setRound2Status(payload.error ?? "Unable to submit code");
-                    return;
-                  }
-                  setRound2Status(
-                    payload.qualified
-                      ? "Code accepted. You qualified for Round 2."
-                      : "Code accepted, but slots are full.",
-                  );
-                }}
-                disabled={round2Code.length !== 4}
-              >
-                Submit Code
-              </button>
-            </div>
-            {round2Status && (
-              <p className="text-sm text-slate-300">{round2Status}</p>
+            {loading && (
+              <p className="text-sm text-slate-300">Refreshing boxes...</p>
             )}
           </div>
-        </div>
-      )}
 
-      <div className="card space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="label">Mystery box</p>
-            <h2 className="text-2xl font-semibold">Open the box</h2>
-          </div>
-          {loading && (
-            <p className="text-sm text-slate-300">Refreshing boxes…</p>
-          )}
-        </div>
-
-        <div className="mystery-grid">
-          <button
-            type="button"
-            className={`mystery-box ${
-              round?.status !== "active" ? "locked" : currentOpen ? "opened" : ""
-            } ${opening ? "opening" : ""}`}
-            onClick={handleBoxClick}
-            disabled={opening || (round?.status !== "active" && !currentOpen)}
-          >
-            <div className="mystery-icon">\ud83c\udf81</div>
-            <span className="box-badge">
-              {round?.status !== "active" ? "Locked" : currentOpen ? "Opened" : "Open"}
-            </span>
-            {opening && (
-              <span className="text-xs uppercase tracking-wide text-sky-300">
-                Opening...
+          <div className="mystery-grid">
+            <button
+              type="button"
+              className={`mystery-box ${
+                round?.status !== "active" ? "locked" : currentOpen ? "opened" : ""
+              } ${opening ? "opening" : ""}`}
+              onClick={handleBoxClick}
+              disabled={opening || (round?.status !== "active" && !currentOpen)}
+            >
+              <div className="mystery-icon">?</div>
+              <div className="mystery-icon">?</div>
+              <div className="mystery-icon">?</div>
+              <span className="box-badge">
+                {round?.status !== "active" ? "Locked" : currentOpen ? "Opened" : "Open"}
               </span>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {selectedGame && modalOpen && (
-        <div className="banner paused">
-          Game loaded. Redirecting to play surface...
+              {opening && (
+                <span className="text-xs uppercase tracking-wide text-sky-300">
+                  Opening...
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       )}
     </main>

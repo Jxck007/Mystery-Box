@@ -38,6 +38,17 @@ export default function GamePage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [warningShown, setWarningShown] = useState(false);
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [correctCount, setCorrectCount] = useState(0);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const QUESTIONS_PER_GAME = 5;
+  const REQUIRED_CORRECT = 3;
+  const totalSeconds = round?.duration_seconds ?? 0;
+  const safeTimeLeft = timeLeft ?? totalSeconds;
+  const progressPercent = totalSeconds
+    ? Math.max(0, Math.min(100, (safeTimeLeft / totalSeconds) * 100))
+    : 0;
 
   const descriptionPoints = useMemo(() => {
     const raw = game?.game_description ?? "";
@@ -81,6 +92,9 @@ export default function GamePage() {
       setGame(payload.game);
       setRound(payload.round ?? null);
       setOpen(payload.open ?? null);
+      setQuestionIndex(0);
+      setCorrectCount(0);
+      setFeedback(null);
     };
     load();
   }, [teamId, boxId]);
@@ -150,7 +164,7 @@ export default function GamePage() {
   }
 
   return (
-    <main className="page-shell game-shell">
+    <main className="page-shell game-shell game-page">
       <div className="game-brand">
         <img src="/Logo.jpg" alt="Mystery Box" />
       </div>
@@ -161,11 +175,16 @@ export default function GamePage() {
         </div>
         <div className="game-timer">
           <span className="label">Time left</span>
-          <span className="timer-pill">{timeLeft ?? "--"}s</span>
+          <div className="timer-number">
+            {timeLeft ?? (totalSeconds ? `${totalSeconds}` : "--")}s
+          </div>
+          <div className="timer-bar">
+            <div className="timer-fill" style={{ width: `${progressPercent}%` }} />
+          </div>
         </div>
       </div>
 
-      <div className="card game-card space-y-4">
+      <div className="game-surface space-y-4">
         <div className="game-warning">
           <p className="text-sm text-slate-300">
             Points stack on this round. Finish before time runs out.
@@ -188,17 +207,36 @@ export default function GamePage() {
           )}
         </ul>
 
+        <div className="text-sm text-slate-300">
+          Question {questionIndex + 1} of {QUESTIONS_PER_GAME}
+        </div>
+
         {isRoundOne && miniGameConfig && open?.status === "pending" && (
           <MiniGameRenderer
             gameKey={miniGameConfig.key}
-            seed={`${open?.id ?? "seed"}-${game?.id ?? ""}`}
+            seed={`${open?.id ?? "seed"}-${game?.id ?? ""}-${questionIndex}`}
             disabled={submitting}
             onComplete={async (result) => {
               if (!teamId || !game) return;
-              if (!result.success) {
-                setError("Not quite. Try again.");
+              const nextCorrect = correctCount + (result.success ? 1 : 0);
+              const nextIndex = questionIndex + 1;
+              setCorrectCount(nextCorrect);
+              setFeedback(result.success ? "Correct." : "Not quite.");
+
+              if (nextIndex < QUESTIONS_PER_GAME) {
+                setQuestionIndex(nextIndex);
                 return;
               }
+
+              if (nextCorrect < REQUIRED_CORRECT) {
+                setFeedback(
+                  `You got ${nextCorrect}/${QUESTIONS_PER_GAME}. Try again.`,
+                );
+                setQuestionIndex(0);
+                setCorrectCount(0);
+                return;
+              }
+
               setSubmitting(true);
               const { data } = await supabaseBrowser.auth.getSession();
               if (!data.session) {
@@ -215,7 +253,7 @@ export default function GamePage() {
                 body: JSON.stringify({
                   teamId,
                   boxId: game.id,
-                  details: result.details,
+                  details: `${nextCorrect}/${QUESTIONS_PER_GAME} correct`,
                 }),
               });
               const payload = await response.json();
@@ -228,6 +266,10 @@ export default function GamePage() {
               router.replace("/team");
             }}
           />
+        )}
+
+        {feedback && (
+          <div className="game-feedback">{feedback}</div>
         )}
       </div>
     </main>

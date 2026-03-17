@@ -1,22 +1,22 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-
-const answerOptions = [
-  { label: "Leader Only", value: "leader_only" },
-  { label: "All Members", value: "all_members" },
-];
 
 export default function CreateTeamPage() {
   const router = useRouter();
   const [teamName, setTeamName] = useState("");
   const [leaderName, setLeaderName] = useState("");
-  const [answerMode, setAnswerMode] = useState("leader_only");
+  const [memberNames, setMemberNames] = useState(["", "", ""]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [checkingAuth, setCheckingAuth] = useState(true);
+
+  const cleanedMembers = useMemo(
+    () => memberNames.map((name) => name.trim()).filter(Boolean),
+    [memberNames],
+  );
 
   useEffect(() => {
     const check = async () => {
@@ -58,7 +58,7 @@ export default function CreateTeamPage() {
         teamName,
         leaderName,
         maxMembers: 4,
-        answerMode,
+        memberNames: cleanedMembers,
       }),
     });
 
@@ -71,7 +71,6 @@ export default function CreateTeamPage() {
     }
 
     localStorage.setItem("team_id", payload.id);
-    localStorage.setItem("team_code", payload.code);
     localStorage.setItem("player_name", payload.leader_name);
     localStorage.setItem("is_leader", "true");
     setLoading(false);
@@ -84,7 +83,7 @@ export default function CreateTeamPage() {
         <p className="label">Team setup</p>
         <h1 className="title">Assemble your squad</h1>
         <p className="subtitle">
-          Set the mission rules, choose answer access, and prepare for the round.
+          Add your team members and get ready for the mission.
         </p>
       </div>
       <div className="card space-y-4">
@@ -101,8 +100,7 @@ export default function CreateTeamPage() {
         <div>
           <h1 className="text-3xl font-semibold">Lead the mission</h1>
           <p className="text-slate-300">
-            Set up your team, choose how submissions should be made, and open
-            mystery boxes once the round starts.
+            Add up to three teammate names. Only the leader signs in and plays.
           </p>
         </div>
 
@@ -141,25 +139,23 @@ export default function CreateTeamPage() {
             />
           </div>
 
-          <div>
-            <label
-              className="block text-sm font-semibold text-slate-200"
-              htmlFor="answer-mode"
-            >
-              Answer Mode
-            </label>
-            <select
-              id="answer-mode"
-              className="input-field"
-              value={answerMode}
-              onChange={(event) => setAnswerMode(event.target.value)}
-            >
-              {answerOptions.map((option) => (
-                <option value={option.value} key={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-slate-200">
+              Teammate names (optional)
+            </p>
+            {memberNames.map((name, index) => (
+              <input
+                key={`member-${index}`}
+                value={name}
+                onChange={(event) => {
+                  const next = [...memberNames];
+                  next[index] = event.target.value;
+                  setMemberNames(next);
+                }}
+                className="input-field"
+                placeholder={`Member ${index + 2} name`}
+              />
+            ))}
           </div>
 
           {error && (
