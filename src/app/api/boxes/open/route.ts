@@ -93,6 +93,13 @@ export async function POST(request: NextRequest) {
 
   const round = roundRecord as { id: string; round_number: number };
 
+  if (round.round_number >= 2) {
+    return NextResponse.json(
+      { error: "This round uses a physical challenge. No mystery boxes." },
+      { status: 400 },
+    );
+  }
+
   const { data: pendingOpen } = await supabase
     .from("box_opens")
     .select("*")

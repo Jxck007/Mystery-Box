@@ -23,6 +23,10 @@ type TeamDetail = {
   eliminated_at?: string | null;
   eliminated_round?: number | null;
   eliminated_position?: number | null;
+  round2_code?: string | null;
+  round2_lock_until?: string | null;
+  round2_solved_at?: string | null;
+  round2_status?: string | null;
 };
 
 type RoundRecord = {
@@ -45,18 +49,6 @@ type LeaderboardEntry = {
   max_members?: number;
 };
 
-type GamesHealth = {
-  summary: {
-    total: number;
-    missing_round: number;
-    missing_title: number;
-    missing_description: number;
-    locked: number;
-    by_round: Record<number, number>;
-  };
-  ready: boolean;
-};
-
 export default function AdminDashboardPage() {
   const [authorized, setAuthorized] = useState(false);
   const [password, setPassword] = useState("");
@@ -77,13 +69,12 @@ export default function AdminDashboardPage() {
   const [leaderboardStatus, setLeaderboardStatus] = useState("");
   const [leaderboardRefreshing, setLeaderboardRefreshing] = useState(false);
   const [actionBusy, setActionBusy] = useState<Record<string, boolean>>({});
-  const [gamesHealth, setGamesHealth] = useState<GamesHealth | null>(null);
-  const [gamesHealthStatus, setGamesHealthStatus] = useState("");
   const [rescueEmail, setRescueEmail] = useState("");
   const [rescueLink, setRescueLink] = useState("");
   const [rescueQr, setRescueQr] = useState("");
   const [rescueStatus, setRescueStatus] = useState("");
   const [rescueLoading, setRescueLoading] = useState(false);
+  const [round2Inputs, setRound2Inputs] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -147,34 +138,11 @@ export default function AdminDashboardPage() {
     }
   }, []);
 
-  const fetchGamesHealth = useCallback(async () => {
-    setGamesHealthStatus("Checking games...");
-    const response = await fetch("/api/admin/games/health", {
-      headers: getAdminHeaders(),
-    });
-    if (response.status === 401) {
-      handleUnauthorized();
-      return;
-    }
-    const payload = await response.json();
-    if (response.ok) {
-      setGamesHealth(payload);
-      setGamesHealthStatus(payload.ready ? "Games ready" : "Needs attention");
-    } else {
-      setGamesHealthStatus(payload.error ?? "Unable to check games");
-    }
-  }, [getAdminHeaders, handleUnauthorized]);
-
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([
-      fetchRounds(),
-      fetchTeams(),
-      fetchLeaderboard(),
-      fetchGamesHealth(),
-    ]);
+    await Promise.all([fetchRounds(), fetchTeams(), fetchLeaderboard()]);
     setRefreshing(false);
-  }, [fetchRounds, fetchTeams, fetchLeaderboard, fetchGamesHealth]);
+  }, [fetchRounds, fetchTeams, fetchLeaderboard]);
 
   useEffect(() => {
     if (!authorized) {
@@ -374,6 +342,76 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleRestoreTeam = async (
+    teamId: string,
+    action: "restore_snapshot" | "restore_time",
+    busyKey?: string,
+  ) => {
+    if (busyKey) {
+      setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
+      setStatusMessage("Working...");
+    }
+    const response = await fetch("/api/admin/teams/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+      body: JSON.stringify({ teamId, action }),
+    });
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setStatusMessage(data.error ?? "Unable to restore team.");
+      if (busyKey) {
+        setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
+      }
+      return;
+    }
+    setStatusMessage(
+      action === "restore_snapshot"
+        ? "Restored snapshot and score."
+        : "Restored remaining time with score reset.",
+    );
+    await refreshAll();
+    if (busyKey) {
+      setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
+    }
+  };
+
+  const handleRound2Code = async (
+    teamId: string,
+    code: string,
+    busyKey?: string,
+  ) => {
+    if (busyKey) {
+      setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
+      setStatusMessage("Working...");
+    }
+    const response = await fetch("/api/admin/round2/code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+      body: JSON.stringify({ teamId, code }),
+    });
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setStatusMessage(data.error ?? "Unable to set code.");
+      if (busyKey) {
+        setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
+      }
+      return;
+    }
+    setStatusMessage("Round 2 code saved.");
+    await refreshAll();
+    if (busyKey) {
+      setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
+    }
+  };
+
   useEffect(() => {
     if (!authorized || teams.length === 0) return;
     const missing = teams.filter((team) => !membersCache[team.id]);
@@ -390,6 +428,19 @@ export default function AdminDashboardPage() {
       setMembersCache((prev) => ({ ...prev, [team.id]: [] }));
     });
   }, [authorized, teams, membersCache]);
+
+  useEffect(() => {
+    if (!authorized || teams.length === 0) return;
+    setRound2Inputs((prev) => {
+      const next = { ...prev };
+      teams.forEach((team) => {
+        if (next[team.id] === undefined && team.round2_code) {
+          next[team.id] = team.round2_code;
+        }
+      });
+      return next;
+    });
+  }, [authorized, teams]);
 
   const sortedLeaderboard = useMemo(() => {
     return [...leaderboard].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
@@ -765,43 +816,6 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
-      <div className="card space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="label">Game readiness</p>
-            <h2 className="text-2xl font-semibold">Games health</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              className="button-neutral text-sm"
-              onClick={fetchGamesHealth}
-              disabled={refreshing}
-            >
-              Refresh
-            </button>
-            <span className="text-sm text-slate-300">
-              {gamesHealthStatus || "Ready check"}
-            </span>
-          </div>
-        </div>
-        {gamesHealth ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm text-slate-300">
-            <div>Total games: {gamesHealth.summary.total}</div>
-            <div>Missing round: {gamesHealth.summary.missing_round}</div>
-            <div>Missing title: {gamesHealth.summary.missing_title}</div>
-            <div>Missing description: {gamesHealth.summary.missing_description}</div>
-            <div>Locked: {gamesHealth.summary.locked}</div>
-            <div>
-              Per round: R1 {gamesHealth.summary.by_round[1] ?? 0} / R2 {gamesHealth.summary.by_round[2] ?? 0} / R3 {gamesHealth.summary.by_round[3] ?? 0} (15/10/5)
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-slate-300">
-            {gamesHealthStatus || "Loading game summary..."}
-          </p>
-        )}
-      </div>
-
       <div className="card space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1028,11 +1042,140 @@ export default function AdminDashboardPage() {
                         );
                       })()}
                     </div>
+                    <div className="mt-2 admin-action-grid">
+                      {(() => {
+                        const restoreKey = `team-${team.id}-restore`;
+                        const restoreBusy = actionBusy[restoreKey];
+                        return (
+                          <button
+                            className="admin-action-button button-success"
+                            onClick={() =>
+                              handleRestoreTeam(team.id, "restore_snapshot", restoreKey)
+                            }
+                            disabled={restoreBusy}
+                          >
+                            {restoreBusy ? "Working..." : "Restore Snapshot"}
+                          </button>
+                        );
+                      })()}
+                      {(() => {
+                        const restoreTimeKey = `team-${team.id}-restore-time`;
+                        const restoreTimeBusy = actionBusy[restoreTimeKey];
+                        return (
+                          <button
+                            className="admin-action-button button-neutral"
+                            onClick={() =>
+                              handleRestoreTeam(team.id, "restore_time", restoreTimeKey)
+                            }
+                            disabled={restoreTimeBusy}
+                          >
+                            {restoreTimeBusy ? "Working..." : "Restore Time"}
+                          </button>
+                        );
+                      })()}
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="card space-y-4">
+        <div>
+          <p className="label">Round 2 controls</p>
+          <h2 className="text-2xl font-semibold">Per-team code keypad</h2>
+          <p className="text-sm text-slate-300">
+            Set the 4-digit code for each team. Codes unlock the Round 2 keypad.
+          </p>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {teams.map((team) => {
+            const input = round2Inputs[team.id] ?? "";
+            const lockUntil = team.round2_lock_until
+              ? new Date(team.round2_lock_until).getTime()
+              : null;
+            const lockRemaining = lockUntil ? Math.ceil((lockUntil - Date.now()) / 1000) : 0;
+            const lockLabel = lockRemaining > 0 ? `Locked ${lockRemaining}s` : "Unlocked";
+            const statusLabel = team.round2_solved_at
+              ? team.round2_status === "qualified"
+                ? "Qualified"
+                : "Eliminated"
+              : team.round2_code
+              ? "Code ready"
+              : "Awaiting";
+            const busyKey = `round2-${team.id}-code`;
+            const busy = actionBusy[busyKey];
+            return (
+              <div
+                key={team.id}
+                className="rounded-2xl border border-slate-700/50 bg-slate-900/60 p-4 space-y-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-100">{team.name}</p>
+                    <p className="text-xs text-slate-400">Team code: {team.code}</p>
+                  </div>
+                  <div className="text-xs text-slate-300">{statusLabel}</div>
+                </div>
+                <div className="text-xs text-slate-400">Lock: {lockLabel}</div>
+                <div className="text-xs text-slate-400">
+                  Current code: {team.round2_code ?? "--"}
+                </div>
+                <div className="code-panel">
+                  <div className="code-display">
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <span key={index} className="code-slot">
+                        {input[index] ?? "_"}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="code-keypad">
+                    {Array.from({ length: 10 }).map((_, index) => {
+                      const value = (index + 1) % 10;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          className="button-muted"
+                          onClick={() => {
+                            if (input.length < 4) {
+                              setRound2Inputs((prev) => ({
+                                ...prev,
+                                [team.id]: `${input}${value}`,
+                              }));
+                            }
+                          }}
+                        >
+                          {value}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="button-muted"
+                      onClick={() =>
+                        setRound2Inputs((prev) => ({ ...prev, [team.id]: "" }))
+                      }
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      className="button-primary"
+                      onClick={() => handleRound2Code(team.id, input, busyKey)}
+                      disabled={input.length !== 4 || busy}
+                    >
+                      {busy ? "Saving..." : "Set Code"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

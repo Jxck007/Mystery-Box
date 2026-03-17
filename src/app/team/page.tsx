@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { getMiniGameConfig, MiniGameRenderer } from "@/app/team/game-panels";
+import { getMiniGameConfig } from "@/app/team/game-panels";
 
 type GameRecord = {
   id: string;
@@ -11,11 +11,11 @@ type GameRecord = {
   game_description: string | null;
   game_type: string | null;
   points_value: number | null;
-  is_locked: boolean;
-  round_number?: number | null;
-};
-
-type BoxOpen = {
+                  setRound2Status(
+                    payload.qualified
+                      ? "Code accepted. You qualified for Round 3."
+                      : "Code accepted, but slots are full.",
+                  );
   id: string;
   box_id: string;
   status: "pending" | "approved" | "rejected";
@@ -29,34 +29,40 @@ type RoundRecord = {
   status: "waiting" | "active" | "paused" | "ended";
   started_at?: string | null;
   ended_at?: string | null;
-  duration_seconds?: number | null;
-  round_number?: number | null;
-  elapsed_seconds?: number | null;
-  remaining_seconds?: number | null;
-};
+      {round?.round_number === 1 && (
+        <div className="card space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="label">Mystery box</p>
+              <h2 className="text-2xl font-semibold">Open the box</h2>
+            </div>
+            {loading && (
+              <p className="text-sm text-slate-300">Refreshing boxes…</p>
+            )}
+          </div>
 
-type TeamEvent = {
-  id: string;
-  event_type: string;
-  message: string;
-  created_at: string;
-};
-
-type TeamDetail = {
-  id: string;
-  name: string;
-  code: string;
-  leader_name: string;
-  score: number;
-  member_count?: number;
-  max_members?: number;
-  answer_mode: "leader_only" | "all_members";
-};
-
-type SessionData = {
-  teamId: string;
-  teamCode: string;
-  playerName: string;
+          <div className="mystery-grid">
+            <button
+              type="button"
+              className={`mystery-box ${
+                round?.status !== "active" ? "locked" : currentOpen ? "opened" : ""
+              } ${opening ? "opening" : ""}`}
+              onClick={handleBoxClick}
+              disabled={opening || (round?.status !== "active" && !currentOpen)}
+            >
+              <div className="mystery-icon">381</div>
+              <span className="box-badge">
+                {round?.status !== "active" ? "Locked" : currentOpen ? "Opened" : "Open"}
+              </span>
+              {opening && (
+                <span className="text-xs uppercase tracking-wide text-sky-300">
+                  Opening...
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
   isLeader: boolean;
 };
 
@@ -81,6 +87,8 @@ export default function TeamDashboardPage() {
   const [opening, setOpening] = useState(false);
   const [selectedGame, setSelectedGame] = useState<GameRecord | null>(null);
   const [modalError, setModalError] = useState("");
+  const [round2Code, setRound2Code] = useState("");
+  const [round2Status, setRound2Status] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [removedNotice, setRemovedNotice] = useState("");
@@ -266,7 +274,7 @@ export default function TeamDashboardPage() {
       return;
     }
     if (currentOpen && currentGame) {
-      setSelectedGame(currentGame);
+      router.push(`/game/${currentGame.id}`);
       return;
     }
 
@@ -286,6 +294,9 @@ export default function TeamDashboardPage() {
       setCurrentGame(payload.game ?? null);
       setCurrentOpen(payload.open ?? null);
       setSelectedGame(payload.game ?? null);
+      if (payload.game?.id) {
+        router.push(`/game/${payload.game.id}`);
+      }
       setModalError("");
       if (INDIVIDUAL_START_ROUNDS.has(round?.round_number ?? 0)) {
         setGameStarted(false);
@@ -380,7 +391,7 @@ export default function TeamDashboardPage() {
     (team?.answer_mode === "all_members" || session?.isLeader);
 
   const isIndividualStartRound = INDIVIDUAL_START_ROUNDS.has(
-    round?.round_number ?? 0,
+      {round?.round_number === 2 && round?.status === "active" && (
   );
 
   const descriptionPoints = useMemo(() => {
@@ -388,124 +399,134 @@ export default function TeamDashboardPage() {
     return raw
       .split(".")
       .map((part) => part.trim())
-      .filter(Boolean)
-      .map((part) => `${part}.`);
-  }, [selectedGame?.game_description]);
-
-  const isRoundOne = round?.round_number === 1;
-  const miniGameConfig = useMemo(
-    () => getMiniGameConfig(selectedGame?.game_title ?? null),
-    [selectedGame?.game_title],
-  );
-  const gameSeed = `${currentOpen?.id ?? "seed"}-${selectedGame?.id ?? ""}`;
-
-  useEffect(() => {
-    if (!gameStarted || !gameStartAt || !round?.duration_seconds) {
-      setTimeLeft(null);
-      return;
-    }
-
-    const openedAt = gameStartAt;
-    const durationMs = round.duration_seconds * 1000;
-
-    const updateTimer = () => {
-      if (round.status === "paused") {
-        return;
-      }
-      const remaining = Math.max(0, openedAt + durationMs - Date.now());
-      setTimeLeft(Math.ceil(remaining / 1000));
-    };
-
-    updateTimer();
-    const intervalId = window.setInterval(updateTimer, 1000);
-    return () => window.clearInterval(intervalId);
-  }, [gameStarted, gameStartAt, round]);
-
-  useEffect(() => {
-    if (!round?.started_at) {
-      setGameStarted(false);
-      setGameStartAt(null);
-      return;
-    }
-
-    setGameStarted(true);
-    setGameStartAt(new Date(round.started_at).getTime());
-  }, [round?.started_at]);
-
-  return (
-    <main className="page-shell">
-      <div className="page-hero">
-        <p className="label">Mission hub</p>
-        <h1 className="title">Team control center</h1>
-        <p className="subtitle">
-          Track your score, review the mission details, and launch the next box
-          when your crew is ready.
-        </p>
-      </div>
-      <div className="card space-y-4">
-        <div className="flex items-center justify-between">
-          <p className="label">Team dashboard</p>
-          <button
-            type="button"
-            className="button-muted text-sm"
-            onClick={() => router.back()}
-          >
-            Back
-          </button>
-        </div>
-        <details className="team-details" open>
-          <summary className="team-summary">
-            <div>
-              <p className="text-sm uppercase text-slate-400">Team</p>
-              <h1 className="text-3xl font-semibold">{team?.name ?? "Team"}</h1>
-              <p className="text-sm text-slate-300">
-                Code: {team?.code ?? session?.teamCode}
-              </p>
+          {!team?.round2_code ? (
+            <div className="banner paused">
+              Waiting for the admin to set your Round 2 code.
             </div>
+          ) : team?.round2_solved_at ? (
+            <div className="banner paused">
+              Code solved. {team.round2_status === "qualified"
+                ? "You qualified for Round 3."
+                : "Slots were full."}
+            </div>
+          ) : (
+            <div className="code-panel">
+              <div className="code-display">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <span key={index} className="code-slot">
+                    {round2Code[index] ?? "_"}
+                  </span>
+                ))}
+              </div>
+              <div className="code-keypad">
+                {Array.from({ length: 10 }).map((_, index) => {
+                  const value = (index + 1) % 10;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      className="button-muted"
+                      onClick={() => {
+                        if (round2Code.length < 4) {
+                          setRound2Code(`${round2Code}${value}`);
+                        }
+                      }}
+                    >
+                      {value}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="button-muted"
+                  onClick={() => setRound2Code("")}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="button-primary"
+                  onClick={async () => {
+                    setRound2Status("");
+                    const { data } = await supabaseBrowser.auth.getSession();
+                    if (!data.session) {
+                      setRound2Status("Please sign in again.");
+                      return;
+                    }
+                    const response = await fetch("/api/round2/submit", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${data.session.access_token}`,
+                      },
+                      body: JSON.stringify({ code: round2Code }),
+                    });
+                    const payload = await response.json();
+                    if (!response.ok) {
+                      setRound2Status(payload.error ?? "Unable to submit code");
+                      return;
+                    }
+                    setRound2Status(
+                      payload.qualified
+                        ? "Code accepted. You qualified for Round 3."
+                        : "Code accepted, but slots are full.",
+                    );
+                  }}
+                  disabled={round2Code.length !== 4}
+                >
+                  Submit Code
+                </button>
+              </div>
+              {round2Status && (
+                <p className="text-sm text-slate-300">{round2Status}</p>
+              )}
+            </div>
+          )}
             <div className="flex items-center gap-3 text-sm">
               <span className="uppercase tracking-wide text-slate-400">Score</span>
               <span className="text-4xl font-bold text-sky-300">
-                {team?.score ?? 0}
-              </span>
+      {round?.round_number !== 2 && (
+        <div className="card space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="label">Mystery box</p>
+              <h2 className="text-2xl font-semibold">Open the box</h2>
             </div>
-          </summary>
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
-              <span className="text-xs uppercase tracking-wide text-slate-400">Profile</span>
-              <span className="member-pill">
-                <span className="member-name">{authEmail ?? "Signed in"}</span>
+            {loading && (
+              <p className="text-sm text-slate-300">Refreshing boxes…</p>
+            )}
+          </div>
+
+          <div className="mystery-grid">
+            <button
+              type="button"
+              className={`mystery-box ${
+                round?.status !== "active" ? "locked" : currentOpen ? "opened" : ""
+              } ${opening ? "opening" : ""}`}
+              onClick={handleBoxClick}
+              disabled={opening || (round?.status !== "active" && !currentOpen)}
+            >
+              <div className="mystery-icon">381</div>
+              <span className="box-badge">
+                {round?.status !== "active" ? "Locked" : currentOpen ? "Opened" : "Open"}
               </span>
-              <button
-                type="button"
-                className="button-muted text-xs"
-                onClick={async () => {
-                  await supabaseBrowser.auth.signOut();
-                  setAuthEmail(null);
-                  router.push("/auth");
-                }}
-              >
-                Log out
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
-              <span className="text-xs uppercase tracking-wide text-slate-400">You</span>
-              <span className="member-pill">
-                <span className="member-name">{session?.playerName ?? "Player"}</span>
-                <span className="role-pill role-you">You</span>
-                {session?.isLeader && (
-                  <span className="role-pill role-leader">Leader</span>
-                )}
-              </span>
-            </div>
+              {opening && (
+                <span className="text-xs uppercase tracking-wide text-sky-300">
+                  Opening...
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
             <div className="flex flex-wrap gap-4 text-sm text-slate-300">
               <p>
                 Members: {(team?.member_count ?? 0)}/{team?.max_members ?? "–"}
               </p>
               <p>
                 Leader: {team?.leader_name ?? session?.playerName ?? "–"}
-              </p>
-              <p>
-                Answer Mode: {team?.answer_mode === "leader_only" ? "Leader only" : "All members"}
               </p>
             </div>
             {members.length > 0 && (
@@ -601,6 +622,90 @@ export default function TeamDashboardPage() {
         </div>
       </div>
 
+      {round?.round_number === 2 && round?.status === "active" && (
+        <div className="card space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="label">Round 2 access</p>
+              <h2 className="text-2xl font-semibold">Enter the 4-digit code</h2>
+            </div>
+          </div>
+          <div className="code-panel">
+            <div className="code-display">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <span key={index} className="code-slot">
+                  {round2Code[index] ?? "_"}
+                </span>
+              ))}
+            </div>
+            <div className="code-keypad">
+              {Array.from({ length: 10 }).map((_, index) => {
+                const value = (index + 1) % 10;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className="button-muted"
+                    onClick={() => {
+                      if (round2Code.length < 4) {
+                        setRound2Code(`${round2Code}${value}`);
+                      }
+                    }}
+                  >
+                    {value}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="button-muted"
+                onClick={() => setRound2Code("")}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                className="button-primary"
+                onClick={async () => {
+                  setRound2Status("");
+                  const { data } = await supabaseBrowser.auth.getSession();
+                  if (!data.session) {
+                    setRound2Status("Please sign in again.");
+                    return;
+                  }
+                  const response = await fetch("/api/round2/submit", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${data.session.access_token}`,
+                    },
+                    body: JSON.stringify({ code: round2Code }),
+                  });
+                  const payload = await response.json();
+                  if (!response.ok) {
+                    setRound2Status(payload.error ?? "Unable to submit code");
+                    return;
+                  }
+                  setRound2Status(
+                    payload.qualified
+                      ? "Code accepted. You qualified for Round 2."
+                      : "Code accepted, but slots are full.",
+                  );
+                }}
+                disabled={round2Code.length !== 4}
+              >
+                Submit Code
+              </button>
+            </div>
+            {round2Status && (
+              <p className="text-sm text-slate-300">{round2Status}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -621,17 +726,10 @@ export default function TeamDashboardPage() {
             onClick={handleBoxClick}
             disabled={opening || (round?.status !== "active" && !currentOpen)}
           >
-            <div className="mystery-box-3d">
-              <div className={`mystery-lid ${currentOpen ? "open" : ""}`}>
-                <span className="lid-glow" />
-              </div>
-              <div className="mystery-base">
-                <span className="box-face" />
-                <span className="box-badge">
-                  {round?.status !== "active" ? "Locked" : currentOpen ? "Opened" : "Tap"}
-                </span>
-              </div>
-            </div>
+            <div className="mystery-icon">\ud83c\udf81</div>
+            <span className="box-badge">
+              {round?.status !== "active" ? "Locked" : currentOpen ? "Opened" : "Open"}
+            </span>
             {opening && (
               <span className="text-xs uppercase tracking-wide text-sky-300">
                 Opening...
@@ -641,166 +739,9 @@ export default function TeamDashboardPage() {
         </div>
       </div>
 
-      {selectedGame && (
-        <div className="modal-overlay" onClick={() => setSelectedGame(null)}>
-          <div
-            className="modal-card reveal-card"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-wider text-gray-500">
-                  Mystery Box
-                </p>
-                <h3 className="text-2xl font-semibold text-slate-900">
-                  {selectedGame.game_title ?? "Mystery Game"}
-                </h3>
-              </div>
-              {modalOpen && (
-                <span
-                  className={
-                    statusStyles[modalOpen.status] ?? "status-pill status-pending"
-                  }
-                >
-                  {modalOpen.status}
-                </span>
-              )}
-            </div>
-
-            <ul className="rule-list">
-              {descriptionPoints.length > 0 ? (
-                descriptionPoints.map((point) => <li key={point}>{point}</li>)
-              ) : (
-                <li>{selectedGame.game_description ?? "Complete the challenge."}</li>
-              )}
-            </ul>
-
-            {isRoundOne && gameStarted && miniGameConfig && (
-              <MiniGameRenderer
-                gameKey={miniGameConfig.key}
-                seed={gameSeed}
-                disabled={submitting}
-                onComplete={async (result) => {
-                  if (!session || !selectedGame) return;
-                  if (!result.success) {
-                    setModalError("Not quite. Try again.");
-                    return;
-                  }
-                  setSubmitting(true);
-                  const { data } = await supabaseBrowser.auth.getSession();
-                  if (!data.session) {
-                    setModalError("Please sign in again.");
-                    setSubmitting(false);
-                    return;
-                  }
-                  const response = await fetch("/api/boxes/complete", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${data.session.access_token}`,
-                    },
-                    body: JSON.stringify({
-                      teamId: session.teamId,
-                      boxId: selectedGame.id,
-                      details: result.details,
-                    }),
-                  });
-                  const payload = await response.json();
-                  if (!response.ok) {
-                    setModalError(payload.error ?? "Unable to submit score");
-                    setSubmitting(false);
-                    return;
-                  }
-                  setModalError("");
-                  await fetchBoxes();
-                  await fetchTeam();
-                  setSubmitting(false);
-                  setSelectedGame(null);
-                }}
-              />
-            )}
-
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-sm font-semibold text-gray-500">
-                Points: {selectedGame.points_value ?? 0}
-              </span>
-              <span className="text-sm uppercase tracking-wide text-blue-600">
-                {selectedGame.game_type ?? "task"}
-              </span>
-              <span className="timer-pill">
-                Round time: {round?.duration_seconds ?? 0}s
-              </span>
-            </div>
-
-            {!canSubmit && (
-              <p className="text-xs text-gray-500">
-                {round?.status !== "active"
-                  ? "Boxes cannot be submitted while the round is paused or ended."
-                  : !gameStarted
-                  ? session?.isLeader
-                    ? "Start the game to begin the team timer."
-                    : "Waiting for the team leader to start the game."
-                  : team?.answer_mode === "leader_only" &&
-                    !session?.isLeader
-                  ? "Only the team leader can submit answers in this mode."
-                  : ""}
-              </p>
-            )}
-
-            {modalError && (
-              <p className="text-sm text-red-600" role="alert">
-                {modalError}
-              </p>
-            )}
-
-            <div className="flex items-center justify-end gap-3">
-              {!gameStarted && session?.isLeader && isIndividualStartRound && (
-                <button
-                  type="button"
-                  className="button-primary"
-                  onClick={async () => {
-                    if (!session) return;
-                    const response = await fetch("/api/boxes/start", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ teamId: session.teamId }),
-                    });
-                    const payload = await response.json();
-                    if (!response.ok) {
-                      setModalError(payload.error ?? "Unable to start timer");
-                      return;
-                    }
-                    setGameStarted(true);
-                    setGameStartAt(new Date(payload.started_at).getTime());
-                    setSelectedGame(null);
-                  }}
-                >
-                  Start Game
-                </button>
-              )}
-              {gameStarted && (
-                <>
-                  <button
-                    type="button"
-                    className="button-muted"
-                    onClick={() => setSelectedGame(null)}
-                  >
-                    Close
-                  </button>
-                  {!isRoundOne && (
-                    <button
-                      type="button"
-                      className="button-primary"
-                      disabled={!canSubmit || submitting}
-                      onClick={handleSubmit}
-                    >
-                      {submitting ? "Submitting…" : "Submit for Validation"}
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+      {selectedGame && modalOpen && (
+        <div className="banner paused">
+          Game loaded. Redirecting to play surface...
         </div>
       )}
     </main>
