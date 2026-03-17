@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { getMiniGameConfig, MiniGameRenderer } from "@/app/team/game-panels";
 
 type GameRecord = {
   id: string;
@@ -92,7 +93,9 @@ export default function TeamDashboardPage() {
   const fetchBoxes = useCallback(async () => {
     if (!session) return;
     setLoading(true);
-    const response = await fetch(`/api/boxes?teamId=${session.teamId}`);
+    const response = await fetch(`/api/boxes?teamId=${session.teamId}`, {
+      cache: "no-store",
+    });
     const payload = await response.json();
     if (response.ok) {
       setCurrentGame(payload.game ?? null);
@@ -144,7 +147,33 @@ export default function TeamDashboardPage() {
       const leaderFlag = localStorage.getItem("is_leader");
 
       if (!storedTeamId || !storedTeamCode || !storedPlayer) {
-        router.push("/");
+        supabaseBrowser.auth.getSession().then(async ({ data }) => {
+          if (!data.session) {
+            router.push("/");
+            return;
+          }
+          const response = await fetch("/api/players/me", {
+            headers: { Authorization: `Bearer ${data.session.access_token}` },
+          });
+          const payload = await response.json().catch(() => null);
+          if (!response.ok || !payload?.team) {
+            router.push("/create-team");
+            return;
+          }
+          localStorage.setItem("team_id", payload.team.id);
+          localStorage.setItem("team_code", payload.team.code);
+          localStorage.setItem("player_name", payload.display_name);
+          localStorage.setItem(
+            "is_leader",
+            payload.team.leader_name === payload.display_name ? "true" : "false",
+          );
+          setSession({
+            teamId: payload.team.id,
+            teamCode: payload.team.code,
+            playerName: payload.display_name,
+            isLeader: payload.team.leader_name === payload.display_name,
+          });
+        });
         return;
       }
 
@@ -363,6 +392,13 @@ export default function TeamDashboardPage() {
       .map((part) => `${part}.`);
   }, [selectedGame?.game_description]);
 
+  const isRoundOne = round?.round_number === 1;
+  const miniGameConfig = useMemo(
+    () => getMiniGameConfig(selectedGame?.game_title ?? null),
+    [selectedGame?.game_title],
+  );
+  const gameSeed = `${currentOpen?.id ?? "seed"}-${selectedGame?.id ?? ""}`;
+
   useEffect(() => {
     if (!gameStarted || !gameStartAt || !round?.duration_seconds) {
       setTimeLeft(null);
@@ -488,6 +524,27 @@ export default function TeamDashboardPage() {
                         <span className="role-pill role-leader">Leader</span>
                       )}
                       {isYou && <span className="role-pill role-you">You</span>}
+                      {session?.isLeader && !isLeader && (
+                        <button
+                          type="button"
+                          className="role-pill role-kick"
+                          onClick={async () => {
+                            const { data } = await supabaseBrowser.auth.getSession();
+                            if (!data.session) return;
+                            await fetch(`/api/teams/${session.teamId}/players/remove`, {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${data.session.access_token}`,
+                              },
+                              body: JSON.stringify({ playerId: member.id }),
+                            });
+                            fetchMembers();
+                          }}
+                        >
+                          Remove
+                        </button>
+                      )}
                     </span>
                   );
                 })}
@@ -618,6 +675,51 @@ export default function TeamDashboardPage() {
               )}
             </ul>
 
+            {isRoundOne && gameStarted && miniGameConfig && (
+              <MiniGameRenderer
+                gameKey={miniGameConfig.key}
+                seed={gameSeed}
+                disabled={submitting}
+                onComplete={async (result) => {
+                  if (!session || !selectedGame) return;
+                  if (!result.success) {
+                    setModalError("Not quite. Try again.");
+                    return;
+                  }
+                  setSubmitting(true);
+                  const { data } = await supabaseBrowser.auth.getSession();
+                  if (!data.session) {
+                    setModalError("Please sign in again.");
+                    setSubmitting(false);
+                    return;
+                  }
+                  const response = await fetch("/api/boxes/complete", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${data.session.access_token}`,
+                    },
+                    body: JSON.stringify({
+                      teamId: session.teamId,
+                      boxId: selectedGame.id,
+                      details: result.details,
+                    }),
+                  });
+                  const payload = await response.json();
+                  if (!response.ok) {
+                    setModalError(payload.error ?? "Unable to submit score");
+                    setSubmitting(false);
+                    return;
+                  }
+                  setModalError("");
+                  await fetchBoxes();
+                  await fetchTeam();
+                  setSubmitting(false);
+                  setSelectedGame(null);
+                }}
+              />
+            )}
+
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-sm font-semibold text-gray-500">
                 Points: {selectedGame.points_value ?? 0}
@@ -685,14 +787,16 @@ export default function TeamDashboardPage() {
                   >
                     Close
                   </button>
-                  <button
-                    type="button"
-                    className="button-primary"
-                    disabled={!canSubmit || submitting}
-                    onClick={handleSubmit}
-                  >
-                    {submitting ? "Submitting…" : "Submit for Validation"}
-                  </button>
+                  {!isRoundOne && (
+                    <button
+                      type="button"
+                      className="button-primary"
+                      disabled={!canSubmit || submitting}
+                      onClick={handleSubmit}
+                    >
+                      {submitting ? "Submitting…" : "Submit for Validation"}
+                    </button>
+                  )}
                 </>
               )}
             </div>

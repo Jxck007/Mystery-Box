@@ -1,8 +1,30 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 export default function HomePage() {
+  const [isAuthed, setIsAuthed] = useState(false);
+  const [hasTeam, setHasTeam] = useState(false);
+
+  useEffect(() => {
+    const check = async () => {
+      const { data } = await supabaseBrowser.auth.getSession();
+      if (!data.session) {
+        setIsAuthed(false);
+        setHasTeam(false);
+        return;
+      }
+      setIsAuthed(true);
+      const response = await fetch("/api/players/me", {
+        headers: { Authorization: `Bearer ${data.session.access_token}` },
+      });
+      setHasTeam(response.ok);
+    };
+    check();
+  }, []);
+
   return (
     <main className="page-shell min-h-screen flex items-center justify-center">
       <div className="w-full max-w-3xl space-y-6">
@@ -25,12 +47,22 @@ export default function HomePage() {
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
-          <Link
-            href="/auth"
-            className="button-primary w-full sm:w-auto text-center"
-          >
-            Sign In
-          </Link>
+          {!isAuthed && (
+            <Link
+              href="/auth"
+              className="button-primary w-full sm:w-auto text-center"
+            >
+              Sign In
+            </Link>
+          )}
+          {isAuthed && hasTeam && (
+            <Link
+              href="/team"
+              className="button-primary w-full sm:w-auto text-center"
+            >
+              Go to Team Hub
+            </Link>
+          )}
           <Link
             href="/create-team"
             className="button-primary w-full sm:w-auto text-center"

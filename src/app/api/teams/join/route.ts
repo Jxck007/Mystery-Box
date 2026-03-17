@@ -28,6 +28,23 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createAdminClient();
+
+  const { data: existingPlayer, error: existingError } = await supabase
+    .from("players")
+    .select("id, team_id")
+    .eq("user_id", auth.user.id)
+    .maybeSingle();
+
+  if (existingError) {
+    return NextResponse.json({ error: existingError.message }, { status: 500 });
+  }
+
+  if (existingPlayer) {
+    return NextResponse.json(
+      { error: "This account is already on a team." },
+      { status: 400 },
+    );
+  }
   const { data: team, error: teamError } = await supabase
     .from("teams")
     .select("*")
@@ -70,7 +87,7 @@ export async function POST(request: NextRequest) {
     .select("id")
     .eq("team_id", team.id);
 
-  if (members && members.length >= (team.max_members ?? 5)) {
+  if (members && members.length >= 4) {
     return NextResponse.json(
       { error: "This team has reached its member limit" },
       { status: 400 },
@@ -80,6 +97,7 @@ export async function POST(request: NextRequest) {
   const { error: insertError } = await supabase.from("players").insert({
     team_id: team.id,
     display_name: trimmedDisplayName,
+    user_id: auth.user.id,
   });
 
   if (insertError) {

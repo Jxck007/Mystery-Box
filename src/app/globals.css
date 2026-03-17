@@ -350,6 +350,53 @@ body::before {
   @apply text-sm text-slate-300 space-y-2 list-disc pl-5;
 }
 
+.game-panel {
+  @apply mt-4 space-y-3;
+}
+
+.game-question {
+  @apply text-lg font-semibold text-slate-100;
+}
+
+.game-options {
+  @apply grid gap-2 sm:grid-cols-2;
+}
+
+.game-option {
+  @apply button-muted text-sm;
+}
+
+.game-input-row {
+  @apply flex flex-col gap-2 sm:flex-row sm:items-center;
+}
+
+.game-grid {
+  @apply grid grid-cols-5 gap-2 text-2xl;
+}
+
+.game-icon {
+  @apply inline-flex items-center justify-center rounded-lg bg-slate-800/60 p-2;
+}
+
+.game-art {
+  @apply relative rounded-2xl border border-dashed border-slate-700/60 bg-slate-900/50;
+  height: 140px;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 8px 12px;
+  color: var(--text-muted);
+}
+
+.game-art-label {
+  @apply text-xs uppercase tracking-wide;
+  background: rgba(2, 6, 23, 0.65);
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
 .event-overlay {
   position: fixed;
   top: 20px;
@@ -411,6 +458,11 @@ body::before {
 .role-you {
   background: rgba(56, 189, 248, 0.2);
   color: #e0f2fe;
+}
+
+.role-kick {
+  background: rgba(248, 113, 113, 0.2);
+  color: #fee2e2;
 }
 
 .timer-danger {

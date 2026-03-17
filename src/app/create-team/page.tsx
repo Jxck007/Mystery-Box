@@ -13,7 +13,6 @@ export default function CreateTeamPage() {
   const router = useRouter();
   const [teamName, setTeamName] = useState("");
   const [leaderName, setLeaderName] = useState("");
-  const [maxMembers, setMaxMembers] = useState(5);
   const [answerMode, setAnswerMode] = useState("leader_only");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -24,6 +23,13 @@ export default function CreateTeamPage() {
       const { data } = await supabaseBrowser.auth.getSession();
       if (!data.session) {
         router.replace("/auth?redirect=/create-team");
+        return;
+      }
+      const response = await fetch("/api/players/me", {
+        headers: { Authorization: `Bearer ${data.session.access_token}` },
+      });
+      if (response.ok) {
+        router.replace("/team");
         return;
       }
       setCheckingAuth(false);
@@ -51,7 +57,7 @@ export default function CreateTeamPage() {
       body: JSON.stringify({
         teamName,
         leaderName,
-        maxMembers,
+        maxMembers: 4,
         answerMode,
       }),
     });
@@ -135,47 +141,25 @@ export default function CreateTeamPage() {
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label
-                className="block text-sm font-semibold text-slate-200"
-                htmlFor="max-members"
-              >
-                Max Members
-              </label>
-              <input
-                id="max-members"
-                type="number"
-                min={2}
-                max={12}
-                value={maxMembers}
-                onChange={(event) => setMaxMembers(Number(event.target.value))}
-                className="input-field"
-                placeholder="2-12"
-                required
-              />
-            </div>
-
-            <div>
-              <label
-                className="block text-sm font-semibold text-slate-200"
-                htmlFor="answer-mode"
-              >
-                Answer Mode
-              </label>
-              <select
-                id="answer-mode"
-                className="input-field"
-                value={answerMode}
-                onChange={(event) => setAnswerMode(event.target.value)}
-              >
-                {answerOptions.map((option) => (
-                  <option value={option.value} key={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <label
+              className="block text-sm font-semibold text-slate-200"
+              htmlFor="answer-mode"
+            >
+              Answer Mode
+            </label>
+            <select
+              id="answer-mode"
+              className="input-field"
+              value={answerMode}
+              onChange={(event) => setAnswerMode(event.target.value)}
+            >
+              {answerOptions.map((option) => (
+                <option value={option.value} key={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           {error && (

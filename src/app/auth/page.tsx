@@ -6,7 +6,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 
 function AuthContent() {
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirect") ?? "/";
+  const redirectTo = searchParams.get("redirect") ?? "/create-team";
   const [email, setEmail] = useState("");
   const [rescueLink, setRescueLink] = useState("");
   const [status, setStatus] = useState("");

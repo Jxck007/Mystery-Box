@@ -21,8 +21,7 @@ export async function POST(request: NextRequest) {
   const { teamName, leaderName, maxMembers, answerMode } = body;
   const trimmedTeam = typeof teamName === "string" ? teamName.trim() : "";
   const trimmedLeader = typeof leaderName === "string" ? leaderName.trim() : "";
-  const parsedMaxMembers =
-    maxMembers !== undefined ? Number(maxMembers) : 5;
+  const parsedMaxMembers = 4;
   const normalizedMode = answerModes.includes(answerMode)
     ? answerMode
     : "leader_only";
@@ -35,13 +34,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Leader name is required" }, { status: 400 });
   }
 
-  if (
-    Number.isNaN(parsedMaxMembers) ||
-    parsedMaxMembers < 2 ||
-    parsedMaxMembers > 12
-  ) {
+  if (Number.isNaN(parsedMaxMembers) || parsedMaxMembers !== 4) {
     return NextResponse.json(
-      { error: "Max members must be between 2 and 12" },
+      { error: "Max members must be 4" },
       { status: 400 },
     );
   }
@@ -68,6 +63,23 @@ export async function POST(request: NextRequest) {
     teamCode = randomTeamCode();
   }
 
+  const { data: existingPlayer, error: existingError } = await supabase
+    .from("players")
+    .select("id, team_id")
+    .eq("user_id", auth.user.id)
+    .maybeSingle();
+
+  if (existingError) {
+    return NextResponse.json({ error: existingError.message }, { status: 500 });
+  }
+
+  if (existingPlayer) {
+    return NextResponse.json(
+      { error: "This account is already on a team." },
+      { status: 400 },
+    );
+  }
+
   const { data: team, error: insertError } = await supabase
     .from("teams")
     .insert({
@@ -92,6 +104,7 @@ export async function POST(request: NextRequest) {
   await supabase.from("players").insert({
     team_id: team.id,
     display_name: trimmedLeader,
+    user_id: auth.user.id,
   });
 
   return NextResponse.json(team);

@@ -1,49 +1,29 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-
-type TeamPreview = {
-  id: string;
-  name: string;
-  code: string;
-  max_members: number;
-  member_count?: number;
-};
 
 export default function JoinTeamPage() {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [teamCode, setTeamCode] = useState("");
-  const [teams, setTeams] = useState<TeamPreview[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [fetchingTeams, setFetchingTeams] = useState(true);
   const [checkingAuth, setCheckingAuth] = useState(true);
-
-  const fetchTeams = useCallback(async () => {
-    setFetchingTeams(true);
-    const response = await fetch("/api/teams/list");
-    const data = await response.json();
-    if (response.ok && Array.isArray(data)) {
-      setTeams(data);
-    }
-    setFetchingTeams(false);
-  }, []);
-
-  useEffect(() => {
-    const id = window.setTimeout(() => {
-      fetchTeams();
-    }, 0);
-    return () => window.clearTimeout(id);
-  }, [fetchTeams]);
 
   useEffect(() => {
     const check = async () => {
       const { data } = await supabaseBrowser.auth.getSession();
       if (!data.session) {
         router.replace("/auth?redirect=/join-team");
+        return;
+      }
+      const response = await fetch("/api/players/me", {
+        headers: { Authorization: `Bearer ${data.session.access_token}` },
+      });
+      if (response.ok) {
+        router.replace("/team");
         return;
       }
       setCheckingAuth(false);
@@ -113,8 +93,7 @@ export default function JoinTeamPage() {
         <div>
           <h1 className="text-3xl font-semibold">Jump into the adventure</h1>
           <p className="text-slate-300">
-            Connect with your teammates using their unique code or select a team
-            from the open list below.
+            Connect with your teammates using the team code provided by the leader.
           </p>
         </div>
 
@@ -148,7 +127,7 @@ export default function JoinTeamPage() {
               value={teamCode}
               onChange={(event) => setTeamCode(event.target.value.toUpperCase())}
               className="input-field"
-              placeholder="Enter team code or select below"
+              placeholder="Enter team code"
             />
           </div>
 
@@ -168,48 +147,6 @@ export default function JoinTeamPage() {
         </form>
       </div>
 
-      <div className="card space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-slate-100">Available teams</h2>
-          <button
-            className="button-muted px-3 py-1 text-sm"
-            onClick={fetchTeams}
-            disabled={fetchingTeams}
-          >
-            {fetchingTeams ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {teams.length === 0 && (
-            <p className="text-sm text-slate-300">No teams available yet.</p>
-          )}
-
-          {teams.map((team) => (
-            <div
-              key={team.id}
-              className="border border-slate-700/60 rounded-xl p-4 flex flex-col gap-2 bg-slate-900/60 shadow-sm"
-            >
-              <div className="flex items-center justify-between">
-                <p className="font-semibold text-slate-100">{team.name}</p>
-                <p className="text-sm text-slate-300">Code: {team.code}</p>
-              </div>
-              <p className="text-sm text-slate-300">
-                {team.member_count ?? 0}/{team.max_members} members
-              </p>
-              <div className="flex justify-end">
-                <button
-                  className="button-muted"
-                  type="button"
-                  onClick={() => setTeamCode(team.code)}
-                >
-                  Select
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
     </main>
   );
 }
