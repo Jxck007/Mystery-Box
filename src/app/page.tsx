@@ -76,6 +76,7 @@ export default function HomePage() {
         </Link>
         </div>
       </div>
+
     </main>
   );
 }

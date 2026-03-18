@@ -79,6 +79,7 @@ body::before {
   box-shadow: 0 12px 20px -12px rgba(15, 23, 42, 0.8);
 }
 
+
 .app-bar {
   display: flex;
   align-items: center;
@@ -340,6 +341,7 @@ body::before {
     top: 12px;
     max-width: min(85vw, 280px);
   }
+
 
   .card {
     @apply p-4;
