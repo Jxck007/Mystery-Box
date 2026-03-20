@@ -112,7 +112,9 @@ export default function AdminDashboardPage() {
         const next = { ...prev };
         payload.forEach((round: RoundRecord) => {
           if (round.round_number && !next[round.round_number]) {
-            next[round.round_number] = round.duration_seconds ?? 0;
+            const fallbackDuration =
+              round.round_number === 1 ? 300 : round.duration_seconds ?? 0;
+            next[round.round_number] = round.duration_seconds ?? fallbackDuration;
           }
         });
         return next;
@@ -683,7 +685,7 @@ export default function AdminDashboardPage() {
             <input
               id={`round-duration-${selectedRound.id}`}
               type="number"
-              min={10}
+              min={60}
               className="input-field text-sm"
               value={roundDurationInput[selectedRound.round_number ?? 0] ?? 0}
               onChange={(event) =>
@@ -928,44 +930,46 @@ export default function AdminDashboardPage() {
                         );
                       })()}
                     </div>
-                    <div className="mt-2 admin-action-grid">
-                      {(() => {
-                        const teamRoundKey = `team-${team.id}-round`;
-                        const teamRoundBusy = actionBusy[teamRoundKey];
-                        const action =
-                          team.current_round_status === "paused"
-                            ? "resume_team"
-                            : team.current_round_status === "active"
-                            ? "pause_team"
-                            : "start";
-                        const label =
-                          team.current_round_status === "paused"
-                            ? "Resume Team"
-                            : team.current_round_status === "active"
-                            ? "Pause Team"
-                            : "Start Team";
-                        const tone =
-                          team.current_round_status === "active"
-                            ? "button-neutral"
-                            : "button-success";
-                        return (
-                          <button
-                            className={`admin-action-button ${tone}`}
-                            onClick={() =>
-                              handleRoundAction(
-                                action,
-                                activeRoundNumber,
-                                team.id,
-                                teamRoundKey,
-                              )
-                            }
-                            disabled={teamRoundBusy}
-                          >
-                            {teamRoundBusy ? "Working..." : label}
-                          </button>
-                        );
-                      })()}
-                    </div>
+                    {activeRoundNumber === 1 && (
+                      <div className="mt-2 admin-action-grid">
+                        {(() => {
+                          const teamRoundKey = `team-${team.id}-round`;
+                          const teamRoundBusy = actionBusy[teamRoundKey];
+                          const action =
+                            team.current_round_status === "paused"
+                              ? "resume_team"
+                              : team.current_round_status === "active"
+                              ? "pause_team"
+                              : "start";
+                          const label =
+                            team.current_round_status === "paused"
+                              ? "Resume Team"
+                              : team.current_round_status === "active"
+                              ? "Pause Team"
+                              : "Start Team";
+                          const tone =
+                            team.current_round_status === "active"
+                              ? "button-neutral"
+                              : "button-success";
+                          return (
+                            <button
+                              className={`admin-action-button ${tone}`}
+                              onClick={() =>
+                                handleRoundAction(
+                                  action,
+                                  activeRoundNumber,
+                                  team.id,
+                                  teamRoundKey,
+                                )
+                              }
+                              disabled={teamRoundBusy}
+                            >
+                              {teamRoundBusy ? "Working..." : label}
+                            </button>
+                          );
+                        })()}
+                      </div>
+                    )}
                     <div className="mt-2 admin-action-grid">
                       {(() => {
                         const restoreKey = `team-${team.id}-restore`;
@@ -1013,6 +1017,31 @@ export default function AdminDashboardPage() {
           <p className="text-sm text-slate-300">
             Set the 4-digit code for each team. Codes unlock the Round 2 keypad.
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {(() => {
+            const round2 = rounds.find((round) => round.round_number === 2);
+            const round2Key = "round-2-start";
+            const round2Busy = actionBusy[round2Key];
+            const isActive = round2?.status === "active";
+            const canStart = Boolean(round2) && availableRounds.includes(2) && !isActive;
+            const canEnd = Boolean(round2) && isActive;
+            return (
+              <button
+                className={`admin-action-button ${isActive ? "button-neutral" : "button-success"}`}
+                onClick={() =>
+                  handleRoundAction(isActive ? "end" : "start", 2, undefined, round2Key)
+                }
+                disabled={!(canStart || canEnd) || round2Busy}
+              >
+                {round2Busy
+                  ? "Working..."
+                  : isActive
+                  ? "End Round 2"
+                  : "Start Round 2"}
+              </button>
+            );
+          })()}
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
           {teams.map((team) => {
