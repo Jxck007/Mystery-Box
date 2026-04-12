@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { isTestModeEnabled } from "@/lib/test-mode";
 
 type RoundRecord = {
   id: string;
@@ -33,9 +34,15 @@ export default function Round2Page() {
   const [round2Code, setRound2Code] = useState("");
   const [round2Status, setRound2Status] = useState("");
   const [loading, setLoading] = useState(false);
+  const testMode = isTestModeEnabled();
 
   const fetchRound = useCallback(async () => {
     if (!session) return;
+    if (testMode) {
+      setRound({ id: "test-round2", status: "active", round_number: 2 });
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const response = await fetch(`/api/boxes?teamId=${session.teamId}`, {
       cache: "no-store",
@@ -45,10 +52,20 @@ export default function Round2Page() {
       setRound(payload.round ?? null);
     }
     setLoading(false);
-  }, [session]);
+  }, [session, testMode]);
 
   const fetchTeam = useCallback(async () => {
     if (!session) return;
+    if (testMode) {
+      setTeam({
+        id: "test-team",
+        name: "TEST COLLECTIVE",
+        leader_name: "TEST_OPERATOR",
+        round2_code: "1234",
+        round2_status: "pending",
+      });
+      return;
+    }
     const response = await fetch("/api/teams/list?includeInactive=true");
     const data = await response.json();
     if (response.ok && Array.isArray(data)) {
@@ -57,13 +74,20 @@ export default function Round2Page() {
         setTeam(matching);
       }
     }
-  }, [session]);
+  }, [session, testMode]);
 
   useEffect(() => {
     const storedTeamId = localStorage.getItem("team_id");
     const storedPlayer = localStorage.getItem("player_name");
     const leaderFlag = localStorage.getItem("is_leader");
     if (!storedTeamId || !storedPlayer) {
+      if (testMode) {
+        localStorage.setItem("team_id", "test-team");
+        localStorage.setItem("player_name", "TEST_OPERATOR");
+        localStorage.setItem("is_leader", "true");
+        setSession({ teamId: "test-team", playerName: "TEST_OPERATOR", isLeader: true });
+        return;
+      }
       router.replace("/");
       return;
     }
@@ -72,7 +96,7 @@ export default function Round2Page() {
       playerName: storedPlayer,
       isLeader: leaderFlag === "true",
     });
-  }, [router]);
+  }, [router, testMode]);
 
   useEffect(() => {
     if (!session) return;
@@ -88,114 +112,151 @@ export default function Round2Page() {
   }, [round, router]);
 
   return (
-    <main className="page-shell round2-page">
-      <div className="round2-card">
-        <div className="round2-header">
-          <div>
-            <p className="label">Round 2 access</p>
-            <h1 className="title">Enter the 4-digit code</h1>
-            <p className="subtitle">
-              Code entry is only active while Round 2 is running.
+    <main className="page-shell min-h-screen">
+      <div className="space-y-2">
+        <p className="section-tag">PHASE_02_ACTIVE</p>
+        <h1 className="font-headline text-5xl md:text-6xl font-black uppercase" style={{ letterSpacing: "-0.04em" }}>
+          CRACK / THE / CODE
+        </h1>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        <section className="md:col-span-7 card space-y-5">
+          <div className="card py-4" style={{ borderLeft: "3px solid var(--accent)" }}>
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[var(--accent)]">key</span>
+              <p className="label">CLUE RECEIVED</p>
+            </div>
+            <p className="font-mono text-sm text-[var(--text-muted)]">
+              ENTER THE ADMIN-ASSIGNED 4-DIGIT AUTHORIZATION SEQUENCE.
             </p>
           </div>
-          <button
-            className="button-muted"
-            onClick={() => router.push("/leaderboard")}
-          >
-            View Leaderboard
-          </button>
-        </div>
-
-        {!team?.round2_code ? (
-          <div className="banner paused">
-            Waiting for the admin to set your Round 2 code.
-          </div>
-        ) : team?.round2_solved_at ? (
-          <div className="banner paused">
-            Code solved. {team.round2_status === "qualified"
-              ? "You qualified for Round 3."
-              : "Slots were full."}
-          </div>
-        ) : (
-          <div className="code-panel">
-            <div className="code-display">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <span key={index} className="code-slot">
-                  {round2Code[index] ?? "_"}
-                </span>
-              ))}
+          {!team?.round2_code ? (
+            <div className="banner paused">
+              Waiting for the admin to set your Round 2 code.
             </div>
-            <div className="code-keypad">
-              {Array.from({ length: 10 }).map((_, index) => {
-                const value = (index + 1) % 10;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    className="button-muted"
-                    onClick={() => {
-                      if (round2Code.length < 4) {
-                        setRound2Code(`${round2Code}${value}`);
-                      }
-                    }}
-                  >
-                    {value}
-                  </button>
-                );
-              })}
+          ) : team?.round2_solved_at ? (
+            <div className="banner paused">
+              Code solved. {team.round2_status === "qualified"
+                ? "You qualified for Round 3."
+                : "Slots were full."}
             </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="button-muted"
-                onClick={() => setRound2Code("")}
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                className="button-primary"
-                onClick={async () => {
-                  setRound2Status("");
-                  const { data } = await supabaseBrowser.auth.getSession();
-                  if (!data.session) {
-                    setRound2Status("Please sign in again.");
-                    return;
-                  }
-                  const response = await fetch("/api/round2/submit", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${data.session.access_token}`,
-                    },
-                    body: JSON.stringify({ code: round2Code }),
-                  });
-                  const payload = await response.json();
-                  if (!response.ok) {
-                    setRound2Status(payload.error ?? "Unable to submit code");
-                    return;
-                  }
-                  setRound2Status(
-                    payload.qualified
-                      ? "Code accepted. You qualified for Round 3."
-                      : "Code accepted, but slots are full.",
+          ) : (
+            <div className="space-y-4">
+              <div className="flex gap-3 justify-start">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <span key={index} className={`code-slot ${round2Code[index] ? "" : "empty"}`}>
+                    {round2Code[index] ?? "_"}
+                  </span>
+                ))}
+              </div>
+              <div className="code-keypad">
+                {Array.from({ length: 9 }).map((_, index) => {
+                  const value = index + 1;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      className="keypad-btn"
+                      onClick={() => {
+                        if (round2Code.length < 4) setRound2Code(`${round2Code}${value}`);
+                      }}
+                    >
+                      {value}
+                    </button>
                   );
-                }}
-                disabled={round2Code.length !== 4}
-              >
-                Submit Code
-              </button>
+                })}
+                <button type="button" className="keypad-btn clear" onClick={() => setRound2Code("")}>CLEAR</button>
+                <button
+                  type="button"
+                  className="keypad-btn"
+                  onClick={() => {
+                    if (round2Code.length < 4) setRound2Code(`${round2Code}0`);
+                  }}
+                >
+                  0
+                </button>
+                <button
+                  type="button"
+                  className="keypad-btn submit"
+                  onClick={async () => {
+                    if (testMode) {
+                      setRound2Status(
+                        round2Code === "1234"
+                          ? "Code accepted. You qualified for Round 3."
+                          : "Invalid code in test mode (use 1234).",
+                      );
+                      return;
+                    }
+                    setRound2Status("");
+                    const { data } = await supabaseBrowser.auth.getSession();
+                    if (!data.session) {
+                      setRound2Status("Please sign in again.");
+                      return;
+                    }
+                    const response = await fetch("/api/round2/submit", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${data.session.access_token}`,
+                      },
+                      body: JSON.stringify({ code: round2Code }),
+                    });
+                    const payload = await response.json();
+                    if (!response.ok) {
+                      setRound2Status(payload.error ?? "Unable to submit code");
+                      return;
+                    }
+                    setRound2Status(
+                      payload.qualified
+                        ? "Code accepted. You qualified for Round 3."
+                        : "Code accepted, but slots are full.",
+                    );
+                  }}
+                  disabled={round2Code.length !== 4}
+                >
+                  AUTHORIZE
+                </button>
+              </div>
+              {round2Status && (
+                <p className="text-sm text-[var(--text-muted)]">{round2Status}</p>
+              )}
             </div>
-            {round2Status && (
-              <p className="text-sm text-slate-300">{round2Status}</p>
-            )}
+          )}
+          {loading && (
+            <p className="text-sm text-[var(--text-muted)]">Refreshing round status...</p>
+          )}
+        </section>
+        <aside className="md:col-span-5 space-y-4">
+          <div className="card min-h-48 justify-end" style={{ background: "var(--bg-high)" }}>
+            <p className="label">LIVE_FEED</p>
+            <p className="font-mono text-xs text-[var(--text-muted)]">NODE_STREAM / SECURE_OVERLAY</p>
           </div>
-        )}
-
-        {loading && (
-          <p className="text-sm text-slate-300">Refreshing round status...</p>
-        )}
+          <div className="card space-y-3">
+            <div>
+              <p className="label">CRACK PROGRESS</p>
+              <div className="timer-bar w-full">
+                <div className="timer-fill" style={{ width: `${Math.min(100, (round2Code.length / 4) * 100)}%` }} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div><p className="label">STRENGTH</p><p className="font-mono text-xs">MAX</p></div>
+              <div><p className="label">LATENCY</p><p className="font-mono text-xs">0.002MS</p></div>
+              <div><p className="label">ENCRYPTION</p><p className="font-mono text-xs">QUAD_PIN</p></div>
+            </div>
+            <div className="banner ended">3 ATTEMPTS REMAINING BEFORE LOCKOUT</div>
+            <button className="button-secondary" onClick={() => router.push("/leaderboard")}>
+              VIEW LEADERBOARD
+            </button>
+          </div>
+        </aside>
       </div>
+      <footer className="card py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="inline-block w-2 h-2 bg-[var(--accent)]" style={{ animation: "pulse-dot 1.2s ease-in-out infinite" }} />
+          <span className="label">CONNECTION_STABLE</span>
+          <span className="label">NODE: HK_77_A</span>
+        </div>
+      </footer>
     </main>
   );
 }

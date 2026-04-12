@@ -574,49 +574,73 @@ export default function AdminDashboardPage() {
 
   if (!authorized) {
     return (
-      <main className="page-shell">
-        <div className="page-hero">
-          <p className="label">Restricted zone</p>
-          <h1 className="title">Admin access</h1>
-          <p className="subtitle">
-            Authorized personnel only. Enter the access code to continue.
+      <main className="page-shell min-h-screen flex items-center justify-center">
+        <div
+          className="w-full max-w-xl card relative"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(180,255,57,0.05), transparent 60%), var(--bg-container)",
+          }}
+        >
+          <div className="absolute top-4 left-4 w-8 h-8 border-l-2 border-t-2 border-[var(--accent)]" />
+          <p className="label flex items-center gap-2 text-[var(--accent)]">
+            ENCRYPTED GATEWAY
+            <span className="inline-block w-1.5 h-1.5 bg-[var(--accent)]" style={{ animation: "pulse-dot 1s ease-in-out infinite" }} />
           </p>
-        </div>
-        <div className="card space-y-4 max-w-md mx-auto border border-red-500/30">
+          <h1 className="font-headline text-4xl md:text-5xl font-black uppercase leading-tight" style={{ letterSpacing: "-0.04em" }}>
+            ENTER ADMINISTRATIVE ACCESS KEY
+          </h1>
           <input
             type="password"
             className="input-field"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            placeholder="Password"
+            placeholder="ACCESS KEY"
           />
-          {authError && (
-            <p className="text-sm text-red-400" role="alert">
-              {authError}
-            </p>
-          )}
-          <button
-            className="w-full rounded-md px-5 py-3 shadow bg-red-600 text-white hover:bg-red-700"
-            onClick={handleGate}
-          >
-            Enter Restricted Area
+          {authError && <p className="text-sm" style={{ color: "var(--error)" }} role="alert">{authError}</p>}
+          <button className="button-primary w-full" onClick={handleGate}>
+            AUTHORIZE →
           </button>
+          <div className="grid grid-cols-2 gap-2">
+            <span className="label">TERMINAL: ADM_01</span>
+            <span className="label">LOCATION: CORE_SYSTEM</span>
+          </div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="page-shell space-y-6">
-      <div className="page-hero">
-        <p className="label">Command control</p>
-        <h1 className="title">Admin operations</h1>
-        <p className="subtitle">
-          Launch rounds, monitor teams, and oversee the mission pipeline.
-        </p>
-      </div>
+    <div className="app-layout">
+      <aside className="app-sidebar">
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#fff", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>OPERATOR_MAIN</div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", opacity: 0.5 }}>V.2.0.4_STABLE</div>
+        </div>
+        <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+          {["ROUND CONTROL", "BOX REGISTRY", "GLOBAL STATUS", "SCORE OVERRIDE", "LIVE LOGS"].map((item) => (
+            <div key={item} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.15em", textTransform: "uppercase", fontWeight: 700 }}>
+              {item}
+            </div>
+          ))}
+        </nav>
+        <button className="button-primary" style={{ width: "100%", marginTop: "auto" }} onClick={handleUnauthorized}>
+          LOCK_CONSOLE
+        </button>
+      </aside>
+      <div className="app-main">
+        <main className="page-shell space-y-6">
+          <div className="space-y-2">
+            <p className="section-tag">COMMAND_CENTER</p>
+            <h1 className="font-headline text-5xl md:text-6xl font-black uppercase" style={{ letterSpacing: "-0.04em" }}>
+              CORE_SYSTEM
+            </h1>
+            <p className="text-sm text-[var(--text-muted)]">
+              Launch rounds, monitor teams, and oversee the mission pipeline.
+            </p>
+          </div>
 
-      <div className="card space-y-4">
+          <div className="card admin-section space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="label">Round control</p>
@@ -730,7 +754,7 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
-      <div className="card space-y-6">
+          <div className="card admin-section space-y-6">
         <div>
           <p className="label">Password management</p>
           <h2 className="text-2xl font-semibold">Access &amp; codes</h2>
@@ -818,7 +842,7 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
-      <div className="card space-y-4">
+          <div className="card admin-section space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="label">Leaderboard</p>
@@ -1010,7 +1034,7 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      <div className="card space-y-4">
+          <div className="card admin-section space-y-4">
         <div>
           <p className="label">Round 2 controls</p>
           <h2 className="text-2xl font-semibold">Per-team code keypad</h2>
@@ -1131,7 +1155,7 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      <div className="card space-y-4">
+          <div className="card admin-section space-y-4">
         <div>
           <p className="label">Tournament board</p>
           <h2 className="text-2xl font-semibold">Elimination tracker</h2>
@@ -1217,6 +1241,25 @@ export default function AdminDashboardPage() {
           </table>
         </div>
       </div>
-    </main>
+          <div className="card">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {[
+                { label: "NODE CONNECTIVITY", value: 92 },
+                { label: "DB SYNC", value: 88 },
+                { label: "PROXY INTEGRITY", value: 95 },
+                { label: "THERMAL", value: 73 },
+              ].map((metric) => (
+                <div key={metric.label} className="space-y-2">
+                  <p className="label">{metric.label}</p>
+                  <div className="timer-bar w-full">
+                    <div className="timer-fill" style={{ width: `${metric.value}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
   );
 }

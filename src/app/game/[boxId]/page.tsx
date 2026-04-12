@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { getMiniGameConfig, MiniGameRenderer } from "@/app/team/game-panels";
+import { isTestModeEnabled } from "@/lib/test-mode";
 
 type GameRecord = {
   id: string;
@@ -42,6 +43,7 @@ export default function GamePage() {
   const [correctCount, setCorrectCount] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   const submittedRef = useRef(false);
+  const testMode = isTestModeEnabled();
 
   const totalSeconds = round?.duration_seconds ?? 0;
   const safeTimeLeft = timeLeft ?? totalSeconds;
@@ -67,14 +69,42 @@ export default function GamePage() {
   useEffect(() => {
     const storedTeamId = localStorage.getItem("team_id");
     if (!storedTeamId) {
+      if (testMode) {
+        localStorage.setItem("team_id", "test-team");
+        localStorage.setItem("player_name", "TEST_OPERATOR");
+        localStorage.setItem("is_leader", "true");
+        setTeamId("test-team");
+        return;
+      }
       router.replace("/auth");
       return;
     }
     setTeamId(storedTeamId);
-  }, [router]);
+  }, [router, testMode]);
 
   useEffect(() => {
     if (!teamId) return;
+    if (testMode) {
+      setGame({
+        id: boxId || "test-box",
+        game_title: "Rapid Quiz",
+        game_description: "Test mode challenge prompt.",
+        points_value: 100,
+        round_number: 1,
+      });
+      setRound({
+        status: "active",
+        duration_seconds: 300,
+        remaining_seconds: 300,
+        round_number: 1,
+      });
+      setOpen({ id: "test-open", status: "pending" });
+      setQuestionIndex(0);
+      setCorrectCount(0);
+      setFeedback(null);
+      submittedRef.current = false;
+      return;
+    }
     const load = async () => {
       const response = await fetch(`/api/boxes?teamId=${teamId}`, {
         cache: "no-store",
@@ -97,7 +127,7 @@ export default function GamePage() {
       submittedRef.current = false;
     };
     load();
-  }, [teamId, boxId]);
+  }, [teamId, boxId, testMode]);
 
   useEffect(() => {
     if (!round?.duration_seconds) {
@@ -197,14 +227,20 @@ export default function GamePage() {
   }
 
   return (
-    <main className="page-shell game-shell game-page">
-      <div className="game-header">
-        <div>
-          <p className="label">Round {round?.round_number ?? 1}</p>
-          <h1 className="title">{game?.game_title ?? "Mission"}</h1>
+    <main className="page-shell min-h-screen">
+      <header className="card flex-row items-start justify-between gap-4">
+        <div className="space-y-2">
+          <button className="button-muted text-xs" onClick={() => router.push("/team")}>
+            ← BACK
+          </button>
+          <p className="label">BOX_MISSION_01</p>
+          <h1 className="font-headline text-4xl font-black uppercase" style={{ letterSpacing: "-0.04em" }}>
+            {game?.game_title ?? "MISSION"}
+          </h1>
+          <p className="section-tag">GAME_TYPE: {miniGameConfig?.key ?? "QUIZ"}</p>
         </div>
         <div className="game-timer">
-          <span className="label">Time left</span>
+          <span className={`timer-pill ${safeTimeLeft <= 20 ? "timer-danger" : ""}`}>TIME LEFT</span>
           <div className="timer-number">
             {timeLeft ?? (totalSeconds ? `${totalSeconds}` : "--")}s
           </div>
@@ -212,19 +248,20 @@ export default function GamePage() {
             <div className="timer-fill" style={{ width: `${progressPercent}%` }} />
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="game-surface space-y-4">
+      <section className="card space-y-4">
+        <div className="section-tag">GAME_TYPE: {miniGameConfig?.key ?? "QUIZ"}</div>
         <div className="game-warning">
-          <p className="text-sm text-slate-300">
+          <p className="text-sm text-[var(--text-muted)]">
             Points stack on this round. Finish before time runs out.
           </p>
           {!warningShown && (
             <button
-              className="button-muted text-xs"
+              className="button-secondary text-xs"
               onClick={() => setWarningShown(true)}
             >
-              Got it
+              ACKNOWLEDGED
             </button>
           )}
         </div>
@@ -237,7 +274,7 @@ export default function GamePage() {
           )}
         </ul>
 
-        <div className="text-sm text-slate-300">
+        <div className="text-sm text-[var(--text-muted)]">
           Question {questionIndex + 1}
         </div>
 
@@ -247,7 +284,7 @@ export default function GamePage() {
             seed={`${open?.id ?? "seed"}-${game?.id ?? ""}-${questionIndex}`}
             questionIndex={questionIndex}
             disabled={submitting}
-            onComplete={async (result) => {
+            onComplete={(result) => {
               if (!teamId || !game) return;
               const nextCorrect = correctCount + (result.success ? 1 : 0);
               const nextIndex = questionIndex + 1;
@@ -261,7 +298,11 @@ export default function GamePage() {
         {feedback && (
           <div className="game-feedback">{feedback}</div>
         )}
-      </div>
+        <div className="flex flex-wrap gap-4 pt-2">
+          <span className="label">SCORE_INPUT: {correctCount}</span>
+          <span className="label">STREAK_LAYER: {correctCount > 0 ? `${correctCount}X` : "0X"}</span>
+        </div>
+      </section>
     </main>
   );
 }

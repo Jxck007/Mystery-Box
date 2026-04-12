@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { isTestModeEnabled } from "@/lib/test-mode";
 
 type GameRecord = {
   id: string;
@@ -78,9 +79,32 @@ export default function TeamDashboardPage() {
   const [members, setMembers] = useState<
     { id: string; display_name: string; joined_at: string }[]
   >([]);
+  const testMode = isTestModeEnabled();
 
   const fetchBoxes = useCallback(async () => {
     if (!session) return;
+    if (testMode) {
+      setCurrentGame({
+        id: "test-box",
+        game_title: "Rapid Quiz",
+        game_description: "Test mode mock game.",
+        game_type: "quiz",
+        points_value: 100,
+        round_number: 1,
+      });
+      setCurrentOpen(null);
+      setRound({
+        id: "test-round",
+        status: "active",
+        round_number: 1,
+        duration_seconds: 300,
+        elapsed_seconds: 0,
+        remaining_seconds: 300,
+      });
+      setEvents([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const response = await fetch(`/api/boxes?teamId=${session.teamId}`, {
       cache: "no-store",
@@ -100,10 +124,21 @@ export default function TeamDashboardPage() {
       router.push("/");
     }
     setLoading(false);
-  }, [session, router]);
+  }, [session, router, testMode]);
 
   const fetchTeam = useCallback(async () => {
     if (!session) return;
+    if (testMode) {
+      setTeam({
+        id: "test-team",
+        name: "TEST COLLECTIVE",
+        leader_name: session.playerName,
+        score: 2400,
+        member_count: 3,
+        max_members: 4,
+      });
+      return;
+    }
     const response = await fetch("/api/teams/list?includeInactive=true");
     const data = await response.json();
     if (response.ok && Array.isArray(data)) {
@@ -112,10 +147,18 @@ export default function TeamDashboardPage() {
         setTeam(matching);
       }
     }
-  }, [session]);
+  }, [session, testMode]);
 
   const fetchMembers = useCallback(async () => {
     if (!session) return;
+    if (testMode) {
+      setMembers([
+        { id: "m1", display_name: session.playerName, joined_at: new Date().toISOString() },
+        { id: "m2", display_name: "NODE_02", joined_at: new Date().toISOString() },
+        { id: "m3", display_name: "NODE_03", joined_at: new Date().toISOString() },
+      ]);
+      return;
+    }
     const response = await fetch(`/api/teams/${session.teamId}/players`, {
       cache: "no-store",
     });
@@ -125,59 +168,64 @@ export default function TeamDashboardPage() {
       return;
     }
     setMembers([]);
-  }, [session]);
+  }, [session, testMode]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
-      const storedTeamId = localStorage.getItem("team_id");
-      const storedPlayer = localStorage.getItem("player_name");
-      const leaderFlag = localStorage.getItem("is_leader");
-
-      if (!storedTeamId || !storedPlayer) {
-        supabaseBrowser.auth.getSession().then(async ({ data }) => {
-          if (!data.session) {
-            router.push("/");
-            return;
-          }
-          const response = await fetch("/api/players/me", {
-            headers: { Authorization: `Bearer ${data.session.access_token}` },
-          });
-          const payload = await response.json().catch(() => null);
-          if (!response.ok || !payload?.team) {
-            router.push("/create-team");
-            return;
-          }
-          localStorage.setItem("team_id", payload.team.id);
-          localStorage.setItem("player_name", payload.display_name);
-          localStorage.setItem(
-            "is_leader",
-            payload.team.leader_name === payload.display_name ? "true" : "false",
-          );
-          setSession({
-            teamId: payload.team.id,
-            playerName: payload.display_name,
-            isLeader: payload.team.leader_name === payload.display_name,
-          });
+      if (testMode) {
+        localStorage.setItem("team_id", "test-team");
+        localStorage.setItem("player_name", "TEST_OPERATOR");
+        localStorage.setItem("is_leader", "true");
+        setSession({
+          teamId: "test-team",
+          playerName: "TEST_OPERATOR",
+          isLeader: true,
         });
         return;
       }
 
-      setSession({
-        teamId: storedTeamId,
-        playerName: storedPlayer,
-        isLeader: leaderFlag === "true",
+      supabaseBrowser.auth.getSession().then(async ({ data }) => {
+        if (!data.session) {
+          router.replace("/auth?redirect=/team");
+          return;
+        }
+
+        const response = await fetch("/api/players/me", {
+          headers: { Authorization: `Bearer ${data.session.access_token}` },
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.team) {
+          router.replace("/create-team");
+          return;
+        }
+
+        localStorage.setItem("team_id", payload.team.id);
+        localStorage.setItem("player_name", payload.display_name);
+        localStorage.setItem(
+          "is_leader",
+          payload.team.leader_name === payload.display_name ? "true" : "false",
+        );
+        setSession({
+          teamId: payload.team.id,
+          playerName: payload.display_name,
+          isLeader: payload.team.leader_name === payload.display_name,
+        });
       });
     }, 0);
     return () => window.clearTimeout(id);
-  }, [router]);
+  }, [router, testMode]);
 
   useEffect(() => {
+    if (testMode) {
+      setAuthEmail("test.mode@local");
+      return;
+    }
     const readAuth = async () => {
       const { data } = await supabaseBrowser.auth.getUser();
       setAuthEmail(data.user?.email ?? null);
     };
     readAuth();
-  }, []);
+  }, [testMode]);
 
   useEffect(() => {
     if (!session) {
@@ -285,6 +333,10 @@ export default function TeamDashboardPage() {
     if (!session) {
       return;
     }
+    if (testMode) {
+      router.push("/game/test-box");
+      return;
+    }
     if (currentOpen && currentGame) {
       router.push(`/game/${currentGame.id}`);
       return;
@@ -335,6 +387,15 @@ export default function TeamDashboardPage() {
     return null;
   }, [round]);
 
+  const boxStateClass =
+    round?.status !== "active"
+      ? "locked"
+      : opening
+      ? "opening"
+      : currentOpen
+      ? "opened"
+      : "idle";
+
   return (
     <main className="page-shell space-y-6">
       {edgeToast && (
@@ -342,111 +403,80 @@ export default function TeamDashboardPage() {
           {edgeToast.message}
         </div>
       )}
-      <div className="app-bar">
-        <div className="app-bar-left">
-          <img className="app-bar-logo" src="/Logo.jpg" alt="Mystery Box" />
-          <span className="app-bar-title">Mystery Box</span>
-        </div>
-        <div className="app-bar-right">
-          <span className="label">Team hub</span>
-        </div>
-      </div>
-      <div className="page-hero">
-        <p className="label">Team hub</p>
-        <h1 className="title">Welcome back</h1>
-        <p className="subtitle">
-          Lead your crew through each round. Only the leader device is required.
-        </p>
+      <div className="space-y-2">
+        <p className="section-tag">TEAM_OPERATOR_CHANNEL</p>
+        <h1 className="font-headline text-5xl md:text-6xl font-black uppercase" style={{ letterSpacing: "-0.04em" }}>
+          MISSION / CONTROL / HUB
+        </h1>
       </div>
 
-      <div className="card space-y-4">
+      <div className="card space-y-4" style={{ borderTop: "3px solid var(--accent)" }}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="label">Account</p>
-            <h2 className="text-2xl font-semibold">Team dashboard</h2>
+            <p className="label">REAL_TIME_YIELD</p>
+            <h2 className="font-headline text-6xl font-black leading-none" style={{ letterSpacing: "-0.04em" }}>
+              {team?.score ?? 0}
+            </h2>
           </div>
-          <div className="text-sm text-slate-300">
-            {authEmail ? `Signed in as ${authEmail}` : ""}
+          <div className="text-right space-y-1">
+            <p className="label text-[var(--accent)]">STREAK: {currentOpen ? "ACTIVE" : "0X"}</p>
+            <p className="label">ALPHA_PHASE</p>
           </div>
         </div>
 
-        <details className="team-details" open>
-          <summary className="team-summary">
-            <div>
-              <p className="label">Team</p>
-              <h2 className="text-2xl font-semibold">{team?.name ?? "--"}</h2>
-            </div>
-            <div className="flex items-center gap-3 text-sm">
-              <span className="uppercase tracking-wide text-slate-400">Score</span>
-              <span className="text-4xl font-bold text-sky-300">
-                {team?.score ?? 0}
-              </span>
-            </div>
-          </summary>
-          <div className="mt-4 space-y-3">
-            <div className="flex flex-wrap gap-4 text-sm text-slate-300">
-              <p>
-                Members: {(team?.member_count ?? 0)}/{team?.max_members ?? "-"}
-              </p>
-              <p>
-                Leader: {team?.leader_name ?? session?.playerName ?? "-"}
-              </p>
-            </div>
-            {members.length > 0 && (
-              <div className="flex flex-wrap gap-2 text-xs text-slate-300">
-                {members.map((member) => {
-                  const isYou =
-                    member.display_name.toLowerCase() ===
-                    (session?.playerName ?? "").toLowerCase();
-                  const isLeader =
-                    member.display_name.toLowerCase() ===
-                    (team?.leader_name ?? "").toLowerCase();
-                  return (
-                    <span key={member.id} className="member-pill">
-                      <span className="member-name">{member.display_name}</span>
-                      {isLeader && (
-                        <span className="role-pill role-leader">Leader</span>
-                      )}
-                      {isYou && <span className="role-pill role-you">You</span>}
-                      {session?.isLeader && !isLeader && (
-                        <button
-                          type="button"
-                          className="role-pill role-kick"
-                          onClick={async () => {
-                            const { data } = await supabaseBrowser.auth.getSession();
-                            if (!data.session) return;
-                            await fetch(
-                              `/api/teams/${session.teamId}/players/remove`,
-                              {
-                                method: "POST",
-                                headers: {
-                                  "Content-Type": "application/json",
-                                  Authorization: `Bearer ${data.session.access_token}`,
-                                },
-                                body: JSON.stringify({ playerId: member.id }),
-                              },
-                            );
-                            fetchMembers();
-                          }}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-            <div className="flex flex-wrap gap-3">
-              <button
-                className="button-primary"
-                onClick={() => router.push("/leaderboard")}
-              >
-                View Leaderboard
-              </button>
-            </div>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-4 text-sm text-[var(--text-muted)]">
+            <p>Members: {(team?.member_count ?? 0)}/{team?.max_members ?? "-"}</p>
+            <p>Leader: {team?.leader_name ?? session?.playerName ?? "-"}</p>
+            <p>{authEmail ? `Signed in as ${authEmail}` : ""}</p>
           </div>
-        </details>
+          {members.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {members.map((member) => {
+                const isYou =
+                  member.display_name.toLowerCase() ===
+                  (session?.playerName ?? "").toLowerCase();
+                const isLeader =
+                  member.display_name.toLowerCase() ===
+                  (team?.leader_name ?? "").toLowerCase();
+                return (
+                  <span key={member.id} className="member-pill">
+                    <span className="member-name">{member.display_name}</span>
+                    {isLeader && <span className="role-pill role-leader">Leader</span>}
+                    {isYou && <span className="role-pill role-you">You</span>}
+                    {session?.isLeader && !isLeader && (
+                      <button
+                        type="button"
+                        className="role-pill role-kick"
+                        onClick={async () => {
+                          const { data } = await supabaseBrowser.auth.getSession();
+                          if (!data.session) return;
+                          await fetch(
+                            `/api/teams/${session.teamId}/players/remove`,
+                            {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${data.session.access_token}`,
+                              },
+                              body: JSON.stringify({ playerId: member.id }),
+                            },
+                          );
+                          fetchMembers();
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          <button className="button-primary w-full sm:w-auto" onClick={() => router.push("/leaderboard")}>
+            VIEW LEADERBOARD
+          </button>
+        </div>
 
         {removedNotice && <div className="banner ended">{removedNotice}</div>}
 
@@ -464,48 +494,71 @@ export default function TeamDashboardPage() {
         </div>
       </div>
 
+      {!round?.round_number && (
+        <div className="card items-center text-center py-12" style={{ background: "var(--bg-container)" }}>
+          <span className="inline-block w-2 h-2 bg-[var(--accent)] mb-2" style={{ animation: "pulse-dot 1.2s ease-in-out infinite" }} />
+          <p className="label">STANDBY_MODE</p>
+          <p className="font-mono text-sm text-[var(--text-muted)]">WAITING FOR ADMIN TO INITIALIZE A ROUND</p>
+        </div>
+      )}
+
       {round?.round_number === 1 && (
         <div className="card space-y-4">
-          <div className="game-intro">
-            <div>
-              <p className="label">Game intro</p>
-              <p className="text-sm text-slate-300">
-                Ready to open the mystery box?
-              </p>
-            </div>
-            <img className="game-intro-logo" src="/Logo.jpg" alt="Mystery Box" />
-          </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="label">Mystery box</p>
-              <h2 className="text-2xl font-semibold">Open the box</h2>
+              <p className="label">MYSTERY_BOX</p>
+              <h2 className="font-headline text-3xl font-black uppercase">OPEN THE BOX</h2>
             </div>
             {loading && (
-              <p className="text-sm text-slate-300">Refreshing boxes...</p>
+              <p className="text-sm text-[var(--text-muted)]">REFRESHING BOXES...</p>
             )}
           </div>
-
-          <div className="mystery-grid">
-            <button
-              type="button"
-              className={`mystery-box ${
-                round?.status !== "active" ? "locked" : currentOpen ? "opened" : ""
-              } ${opening ? "opening" : ""}`}
+          <div className="mystery-box-scene">
+            <div
+              className={`mystery-box-wrapper ${boxStateClass}`}
               onClick={handleBoxClick}
-              disabled={opening || (round?.status !== "active" && !currentOpen)}
+              aria-disabled={opening || (round?.status !== "active" && !currentOpen)}
             >
-              <div className="mystery-icon">?</div>
-              <div className="mystery-icon">?</div>
-              <div className="mystery-icon">?</div>
-              <span className="box-badge">
-                {round?.status !== "active" ? "Locked" : currentOpen ? "Opened" : "Open"}
-              </span>
-              {opening && (
-                <span className="text-xs uppercase tracking-wide text-sky-300">
-                  Opening...
-                </span>
-              )}
-            </button>
+              <div className="mb-top">
+                <div className="mb-lid">
+                  <div className="mb-lid-shine" />
+                  <div className="mb-lid-stripe" />
+                </div>
+              </div>
+              <div className="mb-bottom">
+                <div className="mb-body">
+                  <div className="mb-body-stripe" />
+                  <div className="mb-icons">
+                    <span className="mb-icon mb-icon-1">?</span>
+                    <span className="mb-icon mb-icon-2">?</span>
+                    <span className="mb-icon mb-icon-3">?</span>
+                  </div>
+                </div>
+              </div>
+              <div className="mb-particles">
+                <span className="mb-particle mb-p1" />
+                <span className="mb-particle mb-p2" />
+                <span className="mb-particle mb-p3" />
+                <span className="mb-particle mb-p4" />
+                <span className="mb-particle mb-p5" />
+                <span className="mb-particle mb-p6" />
+              </div>
+              <div className="mb-rays">
+                <span className="mb-ray mb-r1" />
+                <span className="mb-ray mb-r2" />
+                <span className="mb-ray mb-r3" />
+                <span className="mb-ray mb-r4" />
+              </div>
+              <div className="mb-badge">
+                {boxStateClass === "locked"
+                  ? "LOCKED"
+                  : boxStateClass === "idle"
+                  ? "OPEN_NOW"
+                  : boxStateClass === "opening"
+                  ? "OPENING..."
+                  : "OPENED"}
+              </div>
+            </div>
           </div>
         </div>
       )}

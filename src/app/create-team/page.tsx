@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { isTestModeEnabled } from "@/lib/test-mode";
 
 export default function CreateTeamPage() {
   const router = useRouter();
@@ -20,6 +21,10 @@ export default function CreateTeamPage() {
 
   useEffect(() => {
     const check = async () => {
+      if (isTestModeEnabled()) {
+        setCheckingAuth(false);
+        return;
+      }
       const { data } = await supabaseBrowser.auth.getSession();
       if (!data.session) {
         router.replace("/auth?redirect=/create-team");
@@ -42,6 +47,15 @@ export default function CreateTeamPage() {
     setError("");
     setLoading(true);
 
+    if (isTestModeEnabled()) {
+      localStorage.setItem("team_id", "test-team");
+      localStorage.setItem("player_name", leaderName || "TEST_OPERATOR");
+      localStorage.setItem("is_leader", "true");
+      setLoading(false);
+      router.push("/team");
+      return;
+    }
+
     const { data } = await supabaseBrowser.auth.getSession();
     if (!data.session) {
       router.replace("/auth?redirect=/create-team");
@@ -57,7 +71,7 @@ export default function CreateTeamPage() {
       body: JSON.stringify({
         teamName,
         leaderName,
-        maxMembers: 4,
+        maxMembers: memberNames.length + 1,
         memberNames: cleanedMembers,
       }),
     });
@@ -79,99 +93,101 @@ export default function CreateTeamPage() {
 
   return (
     <main className="page-shell">
-      <div className="page-hero">
-        <p className="label">Team setup</p>
-        <h1 className="title">Assemble your squad</h1>
-        <p className="subtitle">
-          Add your team members and get ready for the mission.
-        </p>
-      </div>
-      <div className="card space-y-4">
-        <div className="flex items-center justify-between">
-          <p className="label">Create your team</p>
-          <button
-            type="button"
-            className="button-muted text-sm"
-            onClick={() => router.back()}
-          >
-            Back
-          </button>
-        </div>
-        <div>
-          <h1 className="text-3xl font-semibold">Lead the mission</h1>
-          <p className="text-slate-300">
-            Add up to three teammate names. Only the leader signs in and plays.
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+        <section className="md:col-span-5 space-y-4">
+          <p className="section-tag">PHASE 01: FORMATION</p>
+          <h1 className="font-headline text-5xl md:text-6xl font-black uppercase leading-[0.9]" style={{ letterSpacing: "-0.04em" }}>
+            ESTABLISH / YOUR / COLLECTIVE
+          </h1>
+          <p className="text-sm md:text-base text-[var(--text-muted)]">
+            Configure team identity, designate lead control, and lock unit capacity before mission start.
           </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              className="block text-sm font-semibold text-slate-200"
-              htmlFor="team-name"
-            >
-              Team Name
-            </label>
-            <input
-              id="team-name"
-              value={teamName}
-              onChange={(event) => setTeamName(event.target.value)}
-              className="input-field"
-              placeholder="Enter team name"
-              required
-            />
-          </div>
-
-          <div>
-            <label
-              className="block text-sm font-semibold text-slate-200"
-              htmlFor="leader-name"
-            >
-              Leader Name
-            </label>
-            <input
-              id="leader-name"
-              value={leaderName}
-              onChange={(event) => setLeaderName(event.target.value)}
-              className="input-field"
-              placeholder="Enter leader name"
-              required
-            />
-          </div>
-
-          <div className="space-y-3">
-            <p className="text-sm font-semibold text-slate-200">
-              Teammate names (optional)
+          <div className="card py-4" style={{ borderLeft: "3px solid var(--accent)" }}>
+            <p className="label">FORMATION_NOTE</p>
+            <p className="text-sm text-[var(--text-muted)]">
+              Leader device owns all in-round submissions and administrative team actions.
             </p>
-            {memberNames.map((name, index) => (
+          </div>
+        </section>
+        <section className="md:col-span-7 card space-y-6" style={{ background: "var(--bg-container)" }}>
+          <div className="flex items-center justify-between">
+            <p className="label">CREATE TEAM</p>
+            <button type="button" className="button-muted text-xs" onClick={() => router.back()}>
+              BACK
+            </button>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <p className="label">01. TEAM DESIGNATION</p>
               <input
-                key={`member-${index}`}
-                value={name}
-                onChange={(event) => {
-                  const next = [...memberNames];
-                  next[index] = event.target.value;
-                  setMemberNames(next);
-                }}
+                id="team-name"
+                value={teamName}
+                onChange={(event) => setTeamName(event.target.value)}
                 className="input-field"
-                placeholder={`Member ${index + 2} name`}
+                placeholder="TEAM NAME"
+                required
               />
-            ))}
-          </div>
-
-          {error && (
-            <p className="text-sm text-red-600" role="alert">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            className="button-primary w-full"
-            disabled={loading || checkingAuth}
-          >
-            {loading || checkingAuth ? "Creating…" : "Create Team"}
-          </button>
-        </form>
+            </div>
+            <div>
+              <p className="label">02. LEAD ARCHITECT</p>
+              <input
+                id="leader-name"
+                value={leaderName}
+                onChange={(event) => setLeaderName(event.target.value)}
+                className="input-field"
+                placeholder="LEADER NAME"
+                required
+              />
+            </div>
+            <div className="space-y-3">
+              <p className="label">03. UNIT CAPACITY</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  className="card py-6 text-left"
+                  style={{ borderColor: (memberNames.length + 1) === 3 ? "var(--accent)" : "rgba(66,74,53,0.3)" }}
+                  onClick={() => setMemberNames(["", ""])}
+                >
+                  <span className="font-headline text-4xl font-black">03</span>
+                  <span className="label">MINIMUM UNIT</span>
+                </button>
+                <button
+                  type="button"
+                  className="card py-6 text-left"
+                  style={{ borderColor: (memberNames.length + 1) === 4 ? "var(--accent)" : "rgba(66,74,53,0.3)" }}
+                  onClick={() => setMemberNames(["", "", ""])}
+                >
+                  <span className="font-headline text-4xl font-black">04</span>
+                  <span className="label">MAXIMUM UNIT</span>
+                </button>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <p className="label">OPTIONAL MEMBER NODES</p>
+              {memberNames.map((name, index) => (
+                <input
+                  key={`member-${index}`}
+                  value={name}
+                  onChange={(event) => {
+                    const next = [...memberNames];
+                    next[index] = event.target.value;
+                    setMemberNames(next);
+                  }}
+                  className="input-field"
+                  placeholder={`MEMBER ${index + 2}`}
+                />
+              ))}
+            </div>
+            {error && (
+              <p className="text-sm" style={{ color: "var(--error)" }} role="alert">
+                {error}
+              </p>
+            )}
+            <button type="submit" className="button-primary w-full" disabled={loading || checkingAuth}>
+              {loading || checkingAuth ? "INITIALIZING..." : "INITIALIZE TEAM"}
+            </button>
+          </form>
+        </section>
       </div>
     </main>
   );

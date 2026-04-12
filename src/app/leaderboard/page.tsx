@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { isTestModeEnabled } from "@/lib/test-mode";
 
 type LeaderboardEntry = {
   id: string;
@@ -12,41 +13,58 @@ type LeaderboardEntry = {
   max_members?: number;
 };
 
-const medalIcons = ["🥇", "🥈", "🥉"];
-
 export default function LeaderboardPage() {
   const router = useRouter();
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkedSession, setCheckedSession] = useState(false);
+  const testMode = isTestModeEnabled();
 
   const fetchLeaderboard = useCallback(async () => {
     setLoading(true);
+    if (testMode) {
+      setEntries([
+        { id: "t1", name: "TEST COLLECTIVE", score: 2400, member_count: 3, max_members: 4 },
+        { id: "t2", name: "NODE_02", score: 2100, member_count: 4, max_members: 4 },
+        { id: "t3", name: "NODE_03", score: 1800, member_count: 3, max_members: 4 },
+      ]);
+      setLoading(false);
+      return;
+    }
     const response = await fetch("/api/leaderboard");
     const data = await response.json();
     if (response.ok && Array.isArray(data)) {
       setEntries(data);
     }
     setLoading(false);
-  }, []);
+  }, [testMode]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
-      const teamId = localStorage.getItem("team_id");
-      const playerName = localStorage.getItem("player_name");
-
-      if (!teamId || !playerName) {
-        router.push("/");
+      if (testMode) {
+        localStorage.setItem("team_id", "test-team");
+        localStorage.setItem("player_name", "TEST_OPERATOR");
+        localStorage.setItem("is_leader", "true");
+        setCheckedSession(true);
+        fetchLeaderboard();
         return;
       }
 
-      setCheckedSession(true);
-      fetchLeaderboard();
+      supabaseBrowser.auth.getSession().then(async ({ data }) => {
+        if (!data.session) {
+          router.replace("/auth?redirect=/leaderboard");
+          return;
+        }
+
+        setCheckedSession(true);
+        await fetchLeaderboard();
+      });
     }, 0);
     return () => window.clearTimeout(id);
-  }, [fetchLeaderboard, router]);
+  }, [fetchLeaderboard, router, testMode]);
 
   useEffect(() => {
+    if (testMode) return;
     const teamsChannel = supabaseBrowser
       .channel("leaderboard-teams")
       .on(
@@ -79,7 +97,7 @@ export default function LeaderboardPage() {
       supabaseBrowser.removeChannel(playersChannel);
       supabaseBrowser.removeChannel(opensChannel);
     };
-  }, [fetchLeaderboard]);
+  }, [fetchLeaderboard, testMode]);
 
   if (!checkedSession) {
     return (
@@ -93,12 +111,15 @@ export default function LeaderboardPage() {
 
   return (
     <main className="page-shell">
-      <div className="page-hero">
-        <p className="label">Standings</p>
-        <h1 className="title">Leaderboard</h1>
-        <p className="subtitle">
-          Live rankings update as teams solve challenges.
-        </p>
+      <div className="space-y-2">
+        <p className="section-tag">LIVE_STANDINGS</p>
+        <h1 className="font-headline text-6xl md:text-7xl font-black uppercase" style={{ letterSpacing: "-0.04em" }}>
+          LEADERBOARD
+        </h1>
+        <div className="flex items-center gap-2">
+          <span className="inline-block w-2 h-2 bg-[var(--accent)]" style={{ animation: "pulse-dot 1.2s ease-in-out infinite" }} />
+          <span className="label text-[var(--accent)]">STREAMING</span>
+        </div>
       </div>
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
@@ -108,17 +129,17 @@ export default function LeaderboardPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              className="button-muted px-3 py-1 text-sm"
+              className="button-secondary px-3 py-1 text-xs"
               onClick={() => router.back()}
             >
-              Back
+              BACK
             </button>
             <button
-              className="button-muted px-3 py-1 text-sm"
+              className="button-secondary px-3 py-1 text-xs"
               onClick={fetchLeaderboard}
               disabled={loading}
             >
-              {loading ? "Refreshing…" : "Refresh"}
+              {loading ? "REFRESHING…" : "REFRESH"}
             </button>
           </div>
         </div>
@@ -134,23 +155,39 @@ export default function LeaderboardPage() {
               </tr>
             </thead>
             <tbody>
-              {entries.map((team, index) => (
-                <tr key={team.id} className="group hover:bg-slate-900/60">
-                  <td className="align-top">
-                    <span className="flex items-center gap-1">
-                      {index < 3 ? medalIcons[index] : index + 1}
-                    </span>
-                  </td>
-                  <td>
-                    <p className="font-semibold text-slate-100">{team.name}</p>
-                  </td>
-                  <td>
-                    {team.member_count ?? 0}
-                    {team.max_members ? `/${team.max_members}` : ""}
-                  </td>
-                  <td>{team.score ?? 0}</td>
-                </tr>
-              ))}
+              {entries.map((team, index) => {
+                const isEliminated = team.name.toLowerCase().includes("eliminated");
+                return (
+                  <tr key={team.id} style={{ opacity: isEliminated ? 0.55 : 1 }}>
+                    <td className="align-top">
+                      <span
+                        className="font-mono"
+                        style={{ color: index < 3 ? "var(--accent)" : "var(--text-muted)" }}
+                      >
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                    </td>
+                    <td>
+                      <p
+                        className="font-semibold"
+                        style={{
+                          color: "#fff",
+                          textDecoration: isEliminated ? "line-through" : "none",
+                        }}
+                      >
+                        {team.name}
+                      </p>
+                    </td>
+                    <td>
+                      {team.member_count ?? 0}
+                      {team.max_members ? `/${team.max_members}` : ""}
+                    </td>
+                    <td className="font-headline text-2xl font-black">
+                      {team.score ?? 0}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {entries.length === 0 && !loading && (
