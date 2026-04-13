@@ -509,7 +509,7 @@ function scrambleWord(word: string, seed: string): string {
 function makeWordDecoys(word: string, seed: string): [string, string, string] {
   const sameLength = WORD_SOURCE.filter((w) => w.length === word.length && w !== word);
   const rand = seededRandom(`decoy-${seed}-${word}`);
-  const picked = shuffle([...sameLength], rand).slice(0, 3);
+  const picked: string[] = shuffle([...sameLength], rand).slice(0, 3);
   while (picked.length < 3) {
     const alphabet = "abcdefghijklmnopqrstuvwxyz";
     const idx = Math.floor(rand() * word.length);

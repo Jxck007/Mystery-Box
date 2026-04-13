@@ -43,6 +43,7 @@ body {
   background-color: var(--bg-base);
   color: var(--text);
   position: relative;
+  overflow-x: hidden;
 }
 
 body::before {
@@ -205,6 +206,7 @@ body::before {
 .nav-row {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .app-header {
@@ -221,6 +223,7 @@ body::before {
   padding: 0 32px;
   min-height: 64px;
   border-bottom: 1px solid rgba(66, 74, 53, 0.2);
+  flex-wrap: wrap;
 }
 
 .app-brand {
@@ -960,6 +963,9 @@ body::before {
   .app-main { margin-left: 0; padding-bottom: 80px; }
   .mobile-nav { display: none; }
   .game-options { grid-template-columns: 1fr; }
+  .page-shell { padding: 24px 14px; gap: 16px; }
+  .card { padding: 18px; }
+  .entry-panel { padding: 18px; }
   .app-header {
     padding: 10px 12px;
     align-items: flex-start;
@@ -978,4 +984,52 @@ body::before {
     justify-content: space-between;
   }
   .app-body-offset { padding-top: 92px; }
+  .nav-row { width: 100%; justify-content: flex-start; }
+  .game-timer {
+    width: 100%;
+    align-items: flex-start;
+  }
+  .timer-bar {
+    width: 100%;
+  }
+  .mystery-box-scene {
+    padding: 32px 12px;
+  }
+  .mb2-box {
+    transform: scale(0.9);
+    transform-origin: center;
+  }
+  .leaderboard-table th,
+  .leaderboard-table td {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-brand-title { font-size: 14px; }
+  .button-primary,
+  .button-secondary,
+  .button-danger {
+    width: 100%;
+  }
+  .nav-row {
+    gap: 6px;
+  }
+  .nav-row > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .leaderboard-table {
+    min-width: 520px;
+  }
+  .code-slot {
+    width: 58px;
+    height: 72px;
+    font-size: 38px;
+  }
+  .keypad-btn {
+    height: 54px;
+    font-size: 18px;
+  }
 }

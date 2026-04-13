@@ -241,7 +241,7 @@ export default function GamePage() {
       return;
     }
     const id = window.setInterval(() => {
-      setQuestionTimeLeft((prev) => Math.max(0, prev - 1));
+      setQuestionTimeLeft((prev) => Math.max(0, (prev ?? questionDuration) - 1));
     }, 1000);
     return () => window.clearInterval(id);
   }, [questionTimeLeft, round?.status, open?.status, open?.id, submitting]);
@@ -370,7 +370,7 @@ export default function GamePage() {
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.15em" }}>
             Q: {questionIndex + 1}
           </span>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: questionTimeLeft <= 2 ? "var(--error)" : "var(--text-muted)", letterSpacing: "0.15em" }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: (questionTimeLeft ?? questionDuration) <= 2 ? "var(--error)" : "var(--text-muted)", letterSpacing: "0.15em" }}>
             THIS Q: {questionTimeLeft ?? questionDuration}s
           </span>
           <div className="timer-bar">
