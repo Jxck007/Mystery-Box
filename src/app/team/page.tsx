@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { GAME_CONFIGS } from "./game-panels";
 import { getTestRoundNumber, isTestModeEnabled, setTestRoundNumber } from "@/lib/test-mode";
-import { play, playRound1Result } from "@/lib/sound-manager";
+import { playSound } from "@/lib/sound-manager";
 
 type GameRecord = {
   id: string;
@@ -335,7 +335,7 @@ export default function TeamDashboardPage() {
     const eliminatedRound1 = team?.eliminated_round === 1 || Boolean(team?.eliminated_at) || eliminatedByEvent;
 
     round1ResultPlayedRef.current = true;
-    void playRound1Result(eliminatedRound1 ? "eliminated" : "selected");
+    playSound(eliminatedRound1 ? "lose_r1" : "win_r1");
   }, [events, round, team?.eliminated_at, team?.eliminated_round]);
 
   const openBriefing = (game: GameRecord | null, openRecord: BoxOpen | null) => {
@@ -349,7 +349,7 @@ export default function TeamDashboardPage() {
     if (!session || !briefingGame) return;
     setBriefingBusy(true);
 
-    await play("Start", { priority: "medium", waitForEnd: true, bypassCooldown: true });
+    playSound("start_r1");
 
     if (!testMode) {
       await fetch("/api/boxes/start", {
@@ -425,7 +425,7 @@ export default function TeamDashboardPage() {
     setOpening(true);
     setModalError("");
 
-    void play("BoxOpen", { priority: "medium", bypassCooldown: true });
+    playSound("box_open");
 
     if (boxOpenTimerRef.current) {
       window.clearTimeout(boxOpenTimerRef.current);

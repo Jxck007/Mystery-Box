@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { playSound } from "@/lib/sound-manager";
 
 type RevealPhase = "idle" | "shake" | "burst" | "rise" | "flip" | "done";
 
@@ -80,9 +81,6 @@ export default function MysteryBoxRevealAnimation({
   const [particles, setParticles] = useState<Particle[]>([]);
 
   const timersRef = useRef<number[]>([]);
-  const buildupRef = useRef<HTMLAudioElement | null>(null);
-  const burstRef = useRef<HTMLAudioElement | null>(null);
-  const revealRef = useRef<HTMLAudioElement | null>(null);
 
   const classes = useMemo(() => {
     return [
@@ -104,33 +102,6 @@ export default function MysteryBoxRevealAnimation({
     timersRef.current = [];
   }, []);
 
-  const resetAudio = useCallback((el: HTMLAudioElement | null) => {
-    if (!el) return;
-    el.pause();
-    el.currentTime = 0;
-  }, []);
-
-  const stopAllAudio = useCallback(() => {
-    resetAudio(buildupRef.current);
-    resetAudio(burstRef.current);
-    resetAudio(revealRef.current);
-  }, [resetAudio]);
-
-  const playAudio = useCallback(
-    async (el: HTMLAudioElement | null, loop = false) => {
-      if (!el) return;
-      stopAllAudio();
-      el.loop = loop;
-      el.currentTime = 0;
-      try {
-        await el.play();
-      } catch {
-        // Ignore autoplay restrictions while keeping sound state clean.
-      }
-    },
-    [stopAllAudio],
-  );
-
   const schedule = useCallback((delay: number, cb: () => void) => {
     const id = window.setTimeout(cb, delay);
     timersRef.current.push(id);
@@ -140,7 +111,6 @@ export default function MysteryBoxRevealAnimation({
     if (started || isClaimed) return;
 
     clearTimers();
-    stopAllAudio();
 
     setStarted(true);
     setIsClaimed(false);
@@ -148,7 +118,7 @@ export default function MysteryBoxRevealAnimation({
     setIsBursting(false);
     setParticles([]);
 
-    void playAudio(buildupRef.current, true);
+    playSound("box_open");
 
     schedule(PHASE_MS.shake, () => {
       setPhase("shake");
@@ -156,13 +126,12 @@ export default function MysteryBoxRevealAnimation({
 
     schedule(PHASE_MS.lidOpen, () => {
       setPhase("burst");
-      resetAudio(buildupRef.current);
     });
 
     schedule(PHASE_MS.burst, () => {
       setIsBursting(true);
       setParticles(buildParticles(44));
-      void playAudio(burstRef.current, false);
+      playSound("box_open");
     });
 
     schedule(PHASE_MS.rise, () => {
@@ -172,7 +141,6 @@ export default function MysteryBoxRevealAnimation({
 
     schedule(PHASE_MS.flip, () => {
       setPhase("flip");
-      void playAudio(revealRef.current, false);
     });
 
     schedule(PHASE_MS.done, () => {
@@ -183,17 +151,7 @@ export default function MysteryBoxRevealAnimation({
       setIsClaimed(true);
       onRevealComplete?.();
     });
-  }, [clearTimers, isClaimed, onRevealComplete, playAudio, resetAudio, schedule, started, stopAllAudio]);
-
-  useEffect(() => {
-    buildupRef.current = audio?.buildupSrc ? new Audio(audio.buildupSrc) : null;
-    burstRef.current = audio?.burstSrc ? new Audio(audio.burstSrc) : null;
-    revealRef.current = audio?.revealSrc ? new Audio(audio.revealSrc) : null;
-
-    return () => {
-      stopAllAudio();
-    };
-  }, [audio?.buildupSrc, audio?.burstSrc, audio?.revealSrc, stopAllAudio]);
+  }, [clearTimers, isClaimed, onRevealComplete, schedule, started]);
 
   useEffect(() => {
     if (autoStart) startReveal();
@@ -202,9 +160,8 @@ export default function MysteryBoxRevealAnimation({
   useEffect(() => {
     return () => {
       clearTimers();
-      stopAllAudio();
     };
-  }, [clearTimers, stopAllAudio]);
+  }, [clearTimers]);
 
   return (
     <section className={classes}>

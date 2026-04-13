@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { isTestModeEnabled } from "@/lib/test-mode";
-import { handleRound2Answer, playRound2Result, playRound2Start } from "@/lib/sound-manager";
+import { playSound } from "@/lib/sound-manager";
 
 type RoundRecord = {
   id: string;
@@ -119,7 +119,7 @@ export default function Round2Page() {
   useEffect(() => {
     if (round2StartPlayed) return;
     if (round?.status !== "active" || round.round_number !== 2) return;
-    void playRound2Start();
+    playSound("start_r2");
     setRound2StartPlayed(true);
   }, [round, round2StartPlayed]);
 
@@ -130,7 +130,7 @@ export default function Round2Page() {
     }
     if (round2ResultPlayedRef.current) return;
     round2ResultPlayedRef.current = true;
-    void playRound2Result(team.round2_status === "qualified" ? "win" : "lose");
+    playSound(team.round2_status === "qualified" ? "win_r2" : "lose_r2");
   }, [team?.round2_solved_at, team?.round2_status]);
 
   return (
@@ -203,11 +203,11 @@ export default function Round2Page() {
                   onClick={async () => {
                     if (testMode) {
                       if (round2Code !== "1234") {
-                        void handleRound2Answer(false);
+                        playSound("wrong_r2");
                         setRound2Code("");
                       } else {
-                        void handleRound2Answer(true);
-                        void playRound2Result("win");
+                        playSound("correct_r2");
+                        playSound("win_r2");
                       }
                       setRound2Status(
                         round2Code === "1234"
@@ -232,7 +232,7 @@ export default function Round2Page() {
                     });
                     const payload = await response.json();
                     if (!response.ok) {
-                      void handleRound2Answer(false);
+                      playSound("wrong_r2");
                       setRound2Code("");
                       if (typeof payload.attempt === "number") {
                         setAttemptCount(payload.attempt);
@@ -243,8 +243,8 @@ export default function Round2Page() {
                       setRound2Status(payload.error ?? "Unable to submit code");
                       return;
                     }
-                    void handleRound2Answer(true);
-                    void playRound2Result(payload.qualified ? "win" : "lose");
+                    playSound("correct_r2");
+                    playSound(payload.qualified ? "win_r2" : "lose_r2");
                     setRound2Status(
                       payload.qualified
                         ? "Code accepted. You qualified for Round 3."

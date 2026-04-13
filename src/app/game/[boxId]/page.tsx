@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { GAME_CONFIGS, getMiniGameConfig, MiniGameRenderer } from "@/app/team/game-panels";
 import { isTestModeEnabled } from "@/lib/test-mode";
-import { handleRound1Answer, resetRound1Streak } from "@/lib/sound-manager";
+import { playSound } from "@/lib/sound-manager";
 
 type GameRecord = {
   id: string;
@@ -53,6 +53,8 @@ export default function GamePage() {
   const answeredRef = useRef(false);
   const streakRef = useRef(0);
   const leavePenaltyRef = useRef(false);
+  const timeoutDispatchRef = useRef<number | null>(null);
+  const questionCycleRef = useRef(0);
   const testMode = isTestModeEnabled();
   const inferredTestConfig = useMemo(() => {
     const match = GAME_CONFIGS.find((config) => boxId.includes(config.key));
@@ -115,8 +117,12 @@ export default function GamePage() {
   const handleAnswer = (result: { success: boolean; details: string }) => {
     if (answeredRef.current) return;
     answeredRef.current = true;
+    if (timeoutDispatchRef.current !== null) {
+      window.clearTimeout(timeoutDispatchRef.current);
+      timeoutDispatchRef.current = null;
+    }
     if (result.success) {
-      void handleRound1Answer(true);
+      playSound("correct_r1");
       const nextStreak = streakRef.current + 1;
       const multiplier = Math.min(3, nextStreak);
       const gained = 10 * multiplier;
@@ -125,7 +131,7 @@ export default function GamePage() {
       setScoreInput((prev) => prev + gained);
       setFeedback(`Correct +${gained}`);
     } else {
-      void handleRound1Answer(false);
+      playSound("wrong_r1");
       const penalty = 3;
       setStreakCount(0);
       setScoreInput((prev) => prev - penalty);
@@ -215,11 +221,16 @@ export default function GamePage() {
   }, [teamId, boxId, testMode, questionDuration, inferredTestConfig.key, inferredTestConfig.title]);
 
   useEffect(() => {
-    resetRound1Streak();
+    playSound("reset_streak");
   }, [game?.id]);
 
   useEffect(() => {
     if (round?.status !== "active" || open?.status !== "pending") return;
+    questionCycleRef.current += 1;
+    if (timeoutDispatchRef.current !== null) {
+      window.clearTimeout(timeoutDispatchRef.current);
+      timeoutDispatchRef.current = null;
+    }
     setQuestionTimeLeft(questionDuration);
     answeredRef.current = false;
   }, [questionIndex, questionDuration, round?.status, open?.id, open?.status]);
@@ -235,8 +246,11 @@ export default function GamePage() {
         const next = Math.max(0, current - 1);
 
         if (next === 0 && current > 0 && !answeredRef.current) {
+          const cycleAtTimeout = questionCycleRef.current;
           answeredRef.current = true;
-          window.setTimeout(() => {
+          timeoutDispatchRef.current = window.setTimeout(() => {
+            timeoutDispatchRef.current = null;
+            if (questionCycleRef.current !== cycleAtTimeout) return;
             handleAnswer({ success: false, details: "timeout" });
           }, 0);
         }
@@ -247,6 +261,14 @@ export default function GamePage() {
 
     return () => window.clearInterval(id);
   }, [questionIndex, questionTimeLeft, questionDuration, round?.status, open?.status, open?.id, submitting]);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutDispatchRef.current !== null) {
+        window.clearTimeout(timeoutDispatchRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!round?.duration_seconds) {

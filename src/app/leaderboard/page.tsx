@@ -22,7 +22,7 @@ export default function LeaderboardPage() {
   const testMode = isTestModeEnabled();
 
   useEffect(() => {
-    void playSound("LeaderBoard", { priority: "medium", bypassCooldown: true });
+    playSound("leaderboard_open");
   }, []);
 
   const fetchLeaderboard = useCallback(async () => {
