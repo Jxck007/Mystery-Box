@@ -1,18 +1,59 @@
 const SOUND_FILES = {
   BoxOpen: "/music/BoxOpen.mp3",
   Correct: "/music/Correct.mp3",
+  Correct2: "/music/Correct2.mp3",
   Wrong: "/music/Wrong.mp3",
+  Wrong2: "/music/Wrong2.mp3",
   Start: "/music/Start.mp3",
+  Start2: "/music/Start2.mp3",
+  Streak: "/music/Streak.mp3",
   EndGame: "/music/EndGame.mp3",
+  Victory: "/music/Victory.mp3",
+  Defeat: "/music/Defeat.mp3",
+  Victory2: "/music/Victory2.mp3",
+  Defeat2: "/music/Defeat2.mp3",
   Gotin: "/music/Gotin.mp3",
   LeaderBoard: "/music/LeaderBoard.mp3",
 } as const;
 
 export type SoundName = keyof typeof SOUND_FILES;
 
+type SoundPriority = "low" | "medium" | "high";
+
 type PlayOptions = {
+  priority?: SoundPriority;
+  interrupt?: boolean;
   waitForEnd?: boolean;
   bypassCooldown?: boolean;
+};
+
+const HIGH_PRIORITY_SOUNDS = new Set<SoundName>([
+  "Victory",
+  "Defeat",
+  "Victory2",
+  "Defeat2",
+  "EndGame",
+]);
+
+const MEDIUM_PRIORITY_SOUNDS = new Set<SoundName>([
+  "BoxOpen",
+  "Start",
+  "Start2",
+  "LeaderBoard",
+]);
+
+const LOW_PRIORITY_SOUNDS = new Set<SoundName>([
+  "Correct",
+  "Correct2",
+  "Wrong",
+  "Wrong2",
+  "Streak",
+]);
+
+const PRIORITY_RANK: Record<SoundPriority, number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
 };
 
 class SoundManager {
@@ -22,11 +63,14 @@ class SoundManager {
   private readonly endHandlers = new Map<SoundName, () => void>();
   private readonly errorHandlers = new Map<SoundName, () => void>();
   private readonly lastTriggeredAt = new Map<SoundName, number>();
-  private readonly startedAt = new Map<SoundName, number>();
   private backgroundMusic: HTMLAudioElement | null = null;
+  private currentSound: SoundName | null = null;
+  private currentPriority: SoundPriority | null = null;
+  private highPriorityLock = false;
+  private currentStreak = 0;
+  private streakPlayed = false;
 
   private cooldownMs = 200;
-  private maxConcurrent = 2;
   private isMuted = false;
   private baseVolume = 0.5;
 
@@ -53,8 +97,15 @@ class SoundManager {
     return this.isMuted;
   }
 
-  playSound(name: SoundName, options: PlayOptions = {}) {
+  play(name: SoundName, options: PlayOptions = {}) {
     if (typeof window === "undefined") return Promise.resolve();
+
+    const requestedPriority = options.priority ?? this.defaultPriority(name);
+    const interrupt = options.interrupt ?? false;
+    const incomingRank = PRIORITY_RANK[requestedPriority];
+    const active = this.currentSound;
+    const activePriority = this.currentPriority;
+    const activeRank = activePriority ? PRIORITY_RANK[activePriority] : 0;
 
     const now = Date.now();
     const last = this.lastTriggeredAt.get(name) ?? 0;
@@ -62,12 +113,64 @@ class SoundManager {
       return this.inFlight.get(name) ?? Promise.resolve();
     }
 
+    if (this.highPriorityLock && active && active !== name) {
+      return Promise.resolve();
+    }
+
+    if (active) {
+      const activeAudio = this.sounds.get(active);
+      const activePlaying = this.isPlaying(activeAudio);
+
+      if (active === name && activePlaying) {
+        this.lastTriggeredAt.set(name, now);
+        if (!interrupt && requestedPriority !== "high") {
+          return this.inFlight.get(name) ?? Promise.resolve();
+        }
+        return this.startPlayback(name, requestedPriority, options.waitForEnd === true);
+      }
+
+      if (!activePlaying) {
+        this.currentSound = null;
+        this.currentPriority = null;
+        this.highPriorityLock = false;
+      } else {
+        if (requestedPriority === "low") {
+          return Promise.resolve();
+        }
+
+        if (incomingRank < activeRank) {
+          return Promise.resolve();
+        }
+
+        if (incomingRank === activeRank && !interrupt) {
+          return Promise.resolve();
+        }
+
+        if (requestedPriority === "high") {
+          this.stopAllExcept(name);
+        } else {
+          this.stop(active);
+        }
+      }
+    }
+
     this.lastTriggeredAt.set(name, now);
-    this.trimOverlap(name);
+    return this.startPlayback(name, requestedPriority, options.waitForEnd === true);
+  }
+
+  playSound(name: SoundName, options: PlayOptions = {}) {
+    return this.play(name, options);
+  }
+
+  private startPlayback(name: SoundName, priority: SoundPriority, waitForEnd: boolean) {
+    const now = Date.now();
 
     const audio = this.getAudio(name);
     this.resolveInFlight(name);
-    this.startedAt.set(name, now);
+    this.currentSound = name;
+    this.currentPriority = priority;
+    this.highPriorityLock = priority === "high";
+
     audio.pause();
     audio.currentTime = 0;
     audio.volume = this.effectiveVolume();
@@ -93,20 +196,32 @@ class SoundManager {
         this.resolveInFlight(name);
       });
 
-    return options.waitForEnd ? finished : started;
+    return waitForEnd ? finished : started;
   }
 
-  stopSound(name: SoundName) {
+  stop(name: SoundName) {
     const audio = this.sounds.get(name);
     if (!audio) return;
     this.resolveInFlight(name);
     audio.pause();
     audio.currentTime = 0;
+    if (this.currentSound === name) {
+      this.currentSound = null;
+      this.currentPriority = null;
+      this.highPriorityLock = false;
+    }
+  }
+
+  stopAll() {
+    (Object.keys(SOUND_FILES) as SoundName[]).forEach((name) => this.stop(name));
+    this.stopBackgroundMusic();
+    this.currentSound = null;
+    this.currentPriority = null;
+    this.highPriorityLock = false;
   }
 
   stopAllSounds() {
-    (Object.keys(SOUND_FILES) as SoundName[]).forEach((name) => this.stopSound(name));
-    this.stopBackgroundMusic();
+    this.stopAll();
   }
 
   startBackgroundMusic(src = "/music/background.mp3", loop = true) {
@@ -125,6 +240,45 @@ class SoundManager {
     if (!this.backgroundMusic) return;
     this.backgroundMusic.pause();
     this.backgroundMusic.currentTime = 0;
+  }
+
+  handleRound1Answer(success: boolean) {
+    if (success) {
+      this.currentStreak += 1;
+      void this.play("Correct2", { priority: "low" });
+      if (this.currentStreak >= 3 && !this.streakPlayed) {
+        this.streakPlayed = true;
+        void this.play("Streak", { priority: "low", bypassCooldown: true });
+      }
+      return;
+    }
+
+    this.currentStreak = 0;
+    this.streakPlayed = false;
+    void this.play("Wrong2", { priority: "low" });
+  }
+
+  resetRound1Streak() {
+    this.currentStreak = 0;
+    this.streakPlayed = false;
+  }
+
+  playRound1Result(result: "selected" | "eliminated") {
+    const sound: SoundName = result === "selected" ? "Victory" : "Defeat";
+    return this.play(sound, { priority: "high", bypassCooldown: true, waitForEnd: true });
+  }
+
+  playRound2Start() {
+    return this.play("Start2", { priority: "medium", bypassCooldown: true });
+  }
+
+  handleRound2Answer(success: boolean) {
+    return this.play(success ? "Correct2" : "Wrong2", { priority: "low" });
+  }
+
+  playRound2Result(result: "win" | "lose") {
+    const sound: SoundName = result === "win" ? "Victory2" : "Defeat2";
+    return this.play(sound, { priority: "high", bypassCooldown: true, waitForEnd: true });
   }
 
   private effectiveVolume() {
@@ -152,36 +306,23 @@ class SoundManager {
     return audio;
   }
 
-  private trimOverlap(incoming: SoundName) {
-    const currentlyPlaying = (Object.keys(SOUND_FILES) as SoundName[]).filter((name) => {
-      const audio = this.sounds.get(name);
-      if (!audio) return false;
-      return !audio.paused && !audio.ended;
+  private stopAllExcept(nameToKeep: SoundName) {
+    (Object.keys(SOUND_FILES) as SoundName[]).forEach((name) => {
+      if (name === nameToKeep) return;
+      this.stop(name);
     });
-
-    if (currentlyPlaying.length < this.maxConcurrent) return;
-
-    const incomingPriority = this.priority(incoming);
-    const candidate = currentlyPlaying
-      .map((name) => ({
-        name,
-        priority: this.priority(name),
-        startedAt: this.startedAt.get(name) ?? 0,
-      }))
-      .sort((a, b) => {
-        if (a.priority !== b.priority) return a.priority - b.priority;
-        return a.startedAt - b.startedAt;
-      })[0];
-
-    if (!candidate) return;
-    if (candidate.priority > incomingPriority) return;
-    this.stopSound(candidate.name);
   }
 
-  private priority(name: SoundName) {
-    if (name === "EndGame" || name === "Start") return 3;
-    if (name === "Correct" || name === "Wrong") return 2;
-    return 1;
+  private defaultPriority(name: SoundName): SoundPriority {
+    if (HIGH_PRIORITY_SOUNDS.has(name)) return "high";
+    if (MEDIUM_PRIORITY_SOUNDS.has(name)) return "medium";
+    if (LOW_PRIORITY_SOUNDS.has(name)) return "low";
+    return "low";
+  }
+
+  private isPlaying(audio: HTMLAudioElement | undefined) {
+    if (!audio) return false;
+    return !audio.paused && !audio.ended;
   }
 
   private resolveInFlight(name: SoundName) {
@@ -205,6 +346,12 @@ class SoundManager {
       resolve();
     }
 
+    if (this.currentSound === name) {
+      this.currentSound = null;
+      this.currentPriority = null;
+      this.highPriorityLock = false;
+    }
+
     this.inFlight.delete(name);
   }
 }
@@ -212,9 +359,21 @@ class SoundManager {
 export const soundManager = new SoundManager();
 
 export const preloadAllSounds = () => soundManager.preloadAll();
-export const playSound = (name: SoundName, options?: PlayOptions) => soundManager.playSound(name, options);
-export const stopSound = (name: SoundName) => soundManager.stopSound(name);
-export const stopAllSounds = () => soundManager.stopAllSounds();
+export const play = (name: SoundName, options?: PlayOptions) => soundManager.play(name, options);
+export const stop = (name: SoundName) => soundManager.stop(name);
+export const stopAll = () => soundManager.stopAll();
+
+export const handleRound1Answer = (success: boolean) => soundManager.handleRound1Answer(success);
+export const resetRound1Streak = () => soundManager.resetRound1Streak();
+export const playRound1Result = (result: "selected" | "eliminated") => soundManager.playRound1Result(result);
+export const playRound2Start = () => soundManager.playRound2Start();
+export const handleRound2Answer = (success: boolean) => soundManager.handleRound2Answer(success);
+export const playRound2Result = (result: "win" | "lose") => soundManager.playRound2Result(result);
+
+// Backward compatibility for existing imports.
+export const playSound = (name: SoundName, options?: PlayOptions) => soundManager.play(name, options);
+export const stopSound = (name: SoundName) => soundManager.stop(name);
+export const stopAllSounds = () => soundManager.stopAll();
 export const setGlobalVolume = (volume: number) => soundManager.setVolume(volume);
 export const toggleMute = () => soundManager.toggleMute();
 export const startBackgroundMusic = (src?: string, loop?: boolean) => soundManager.startBackgroundMusic(src, loop);

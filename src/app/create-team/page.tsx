@@ -103,7 +103,7 @@ export default function CreateTeamPage() {
     localStorage.setItem("team_id", payload.id);
     localStorage.setItem("player_name", payload.leader_name);
     localStorage.setItem("is_leader", "true");
-    void playSound("Gotin", { bypassCooldown: true });
+    void playSound("Gotin", { priority: "medium", bypassCooldown: true });
     setLoading(false);
     router.push("/team");
   };

@@ -13,7 +13,7 @@ function AuthCallbackContent() {
   useEffect(() => {
     const finalize = async () => {
       await supabaseBrowser.auth.getSession();
-      void playSound("Gotin", { bypassCooldown: true });
+      void playSound("Gotin", { priority: "medium", bypassCooldown: true });
       router.replace(redirectTo);
     };
     finalize();

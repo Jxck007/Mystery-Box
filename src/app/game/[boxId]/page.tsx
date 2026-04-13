@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { GAME_CONFIGS, getMiniGameConfig, MiniGameRenderer } from "@/app/team/game-panels";
 import { isTestModeEnabled } from "@/lib/test-mode";
-import { playSound } from "@/lib/sound-manager";
+import { handleRound1Answer, resetRound1Streak } from "@/lib/sound-manager";
 
 type GameRecord = {
   id: string;
@@ -106,19 +106,7 @@ export default function GamePage() {
     [game?.game_title, resolvedGameKey],
   );
 
-  const QUESTION_DURATIONS: Record<string, number> = {
-    "rapid-quiz": 6,
-    "fast-trivia": 6,
-    "true-false": 4,
-    "odd-one-out": 5,
-    "number-sequence": 7,
-    "quick-math": 6,
-    "object-count": 8,
-    "word-scramble": 9,
-    "missing-letter": 5,
-    "quick-arrange": 8,
-  };
-  const questionDuration = QUESTION_DURATIONS[resolvedGameKey] ?? 7;
+  const questionDuration = 10;
 
   useEffect(() => {
     streakRef.current = streakCount;
@@ -128,7 +116,7 @@ export default function GamePage() {
     if (answeredRef.current) return;
     answeredRef.current = true;
     if (result.success) {
-      void playSound("Correct");
+      void handleRound1Answer(true);
       const nextStreak = streakRef.current + 1;
       const multiplier = Math.min(3, nextStreak);
       const gained = 10 * multiplier;
@@ -137,7 +125,7 @@ export default function GamePage() {
       setScoreInput((prev) => prev + gained);
       setFeedback(`Correct +${gained}`);
     } else {
-      void playSound("Wrong");
+      void handleRound1Answer(false);
       const penalty = 3;
       setStreakCount(0);
       setScoreInput((prev) => prev - penalty);
@@ -227,6 +215,10 @@ export default function GamePage() {
   }, [teamId, boxId, testMode, questionDuration, inferredTestConfig.key, inferredTestConfig.title]);
 
   useEffect(() => {
+    resetRound1Streak();
+  }, [game?.id]);
+
+  useEffect(() => {
     if (round?.status !== "active" || open?.status !== "pending") return;
     setQuestionTimeLeft(questionDuration);
     answeredRef.current = false;
@@ -236,15 +228,25 @@ export default function GamePage() {
     if (round?.status !== "active" || open?.status !== "pending") return;
     if (submitting || answeredRef.current) return;
     if (questionTimeLeft === null) return;
-    if (questionTimeLeft <= 0) {
-      handleAnswer({ success: false, details: "timeout" });
-      return;
-    }
+
     const id = window.setInterval(() => {
-      setQuestionTimeLeft((prev) => Math.max(0, (prev ?? questionDuration) - 1));
+      setQuestionTimeLeft((prev) => {
+        const current = prev ?? questionDuration;
+        const next = Math.max(0, current - 1);
+
+        if (next === 0 && current > 0 && !answeredRef.current) {
+          answeredRef.current = true;
+          window.setTimeout(() => {
+            handleAnswer({ success: false, details: "timeout" });
+          }, 0);
+        }
+
+        return next;
+      });
     }, 1000);
+
     return () => window.clearInterval(id);
-  }, [questionTimeLeft, round?.status, open?.status, open?.id, submitting]);
+  }, [questionIndex, questionTimeLeft, questionDuration, round?.status, open?.status, open?.id, submitting]);
 
   useEffect(() => {
     if (!round?.duration_seconds) {
@@ -265,7 +267,6 @@ export default function GamePage() {
   useEffect(() => {
     if (timeLeft === null) return;
     if (timeLeft > 0) return;
-    void playSound("EndGame", { bypassCooldown: true });
     if (submittedRef.current || !teamId || !game) {
       router.replace("/team");
       return;

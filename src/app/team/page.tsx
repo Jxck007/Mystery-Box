@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { GAME_CONFIGS } from "./game-panels";
 import { getTestRoundNumber, isTestModeEnabled, setTestRoundNumber } from "@/lib/test-mode";
-import { playSound } from "@/lib/sound-manager";
+import { play, playRound1Result } from "@/lib/sound-manager";
 
 type GameRecord = {
   id: string;
@@ -48,8 +48,11 @@ type TeamDetail = {
   name: string;
   leader_name: string;
   score: number;
+  is_active?: boolean;
   member_count?: number;
   max_members?: number;
+  eliminated_at?: string | null;
+  eliminated_round?: number | null;
   round2_code?: string | null;
   round2_lock_until?: string | null;
   round2_solved_at?: string | null;
@@ -89,8 +92,8 @@ export default function TeamDashboardPage() {
   const [isOpening, setIsOpening] = useState(false);
   const [isOpened, setIsOpened] = useState(false);
   const [pendingBriefing, setPendingBriefing] = useState<{ game: GameRecord | null; open: BoxOpen | null } | null>(null);
-  const boxOpenAudioRef = useRef<HTMLAudioElement | null>(null);
   const boxOpenTimerRef = useRef<number | null>(null);
+  const round1ResultPlayedRef = useRef(false);
   const testMode = isTestModeEnabled();
 
   const fetchBoxes = useCallback(async () => {
@@ -302,17 +305,10 @@ export default function TeamDashboardPage() {
   }, [session, fetchBoxes, fetchTeam, fetchMembers]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    boxOpenAudioRef.current = new Audio("/music/BoxOpen.mp3");
-    boxOpenAudioRef.current.preload = "auto";
-    boxOpenAudioRef.current.volume = 0.5;
-
     return () => {
       if (boxOpenTimerRef.current) {
         window.clearTimeout(boxOpenTimerRef.current);
       }
-      boxOpenAudioRef.current?.pause();
-      boxOpenAudioRef.current = null;
     };
   }, []);
 
@@ -328,6 +324,20 @@ export default function TeamDashboardPage() {
     setPendingBriefing(null);
   }, [isOpened, pendingBriefing]);
 
+  useEffect(() => {
+    if (round?.round_number !== 1 || round.status !== "ended") {
+      round1ResultPlayedRef.current = false;
+      return;
+    }
+    if (round1ResultPlayedRef.current) return;
+
+    const eliminatedByEvent = events.some((event) => event.event_type === "elimination");
+    const eliminatedRound1 = team?.eliminated_round === 1 || Boolean(team?.eliminated_at) || eliminatedByEvent;
+
+    round1ResultPlayedRef.current = true;
+    void playRound1Result(eliminatedRound1 ? "eliminated" : "selected");
+  }, [events, round, team?.eliminated_at, team?.eliminated_round]);
+
   const openBriefing = (game: GameRecord | null, openRecord: BoxOpen | null) => {
     if (!game || !openRecord) return;
     setBriefingGame(game);
@@ -339,7 +349,7 @@ export default function TeamDashboardPage() {
     if (!session || !briefingGame) return;
     setBriefingBusy(true);
 
-    await playSound("Start", { waitForEnd: true, bypassCooldown: true });
+    await play("Start", { priority: "medium", waitForEnd: true, bypassCooldown: true });
 
     if (!testMode) {
       await fetch("/api/boxes/start", {
@@ -415,11 +425,7 @@ export default function TeamDashboardPage() {
     setOpening(true);
     setModalError("");
 
-    const audio = boxOpenAudioRef.current;
-    if (audio && audio.paused) {
-      audio.currentTime = 0;
-      void audio.play().catch(() => undefined);
-    }
+    void play("BoxOpen", { priority: "medium", bypassCooldown: true });
 
     if (boxOpenTimerRef.current) {
       window.clearTimeout(boxOpenTimerRef.current);
@@ -470,10 +476,6 @@ export default function TeamDashboardPage() {
       if (boxOpenTimerRef.current) {
         window.clearTimeout(boxOpenTimerRef.current);
         boxOpenTimerRef.current = null;
-      }
-      boxOpenAudioRef.current?.pause();
-      if (boxOpenAudioRef.current) {
-        boxOpenAudioRef.current.currentTime = 0;
       }
       setIsOpening(false);
       setIsOpened(false);

@@ -110,11 +110,11 @@ function AuthContent() {
     });
     setLoading(false);
     if (response.ok) {
-      void playSound("Gotin", { bypassCooldown: true });
+      void playSound("Gotin", { priority: "medium", bypassCooldown: true });
       router.replace("/team");
       return;
     }
-    void playSound("Gotin", { bypassCooldown: true });
+    void playSound("Gotin", { priority: "medium", bypassCooldown: true });
     router.replace(redirectTo);
   };
 

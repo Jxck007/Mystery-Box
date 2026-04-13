@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { isTestModeEnabled } from "@/lib/test-mode";
+import { handleRound2Answer, playRound2Result, playRound2Start } from "@/lib/sound-manager";
 
 type RoundRecord = {
   id: string;
@@ -36,6 +37,8 @@ export default function Round2Page() {
   const [attemptCount, setAttemptCount] = useState(0);
   const [lastLockSeconds, setLastLockSeconds] = useState(10);
   const [loading, setLoading] = useState(false);
+  const [round2StartPlayed, setRound2StartPlayed] = useState(false);
+  const round2ResultPlayedRef = useRef(false);
   const testMode = isTestModeEnabled();
 
   const fetchRound = useCallback(async () => {
@@ -113,6 +116,23 @@ export default function Round2Page() {
     }
   }, [round, router]);
 
+  useEffect(() => {
+    if (round2StartPlayed) return;
+    if (round?.status !== "active" || round.round_number !== 2) return;
+    void playRound2Start();
+    setRound2StartPlayed(true);
+  }, [round, round2StartPlayed]);
+
+  useEffect(() => {
+    if (!team?.round2_solved_at || !team.round2_status) {
+      round2ResultPlayedRef.current = false;
+      return;
+    }
+    if (round2ResultPlayedRef.current) return;
+    round2ResultPlayedRef.current = true;
+    void playRound2Result(team.round2_status === "qualified" ? "win" : "lose");
+  }, [team?.round2_solved_at, team?.round2_status]);
+
   return (
     <main className="page-shell min-h-screen">
       <div className="space-y-2">
@@ -183,7 +203,11 @@ export default function Round2Page() {
                   onClick={async () => {
                     if (testMode) {
                       if (round2Code !== "1234") {
+                        void handleRound2Answer(false);
                         setRound2Code("");
+                      } else {
+                        void handleRound2Answer(true);
+                        void playRound2Result("win");
                       }
                       setRound2Status(
                         round2Code === "1234"
@@ -208,6 +232,7 @@ export default function Round2Page() {
                     });
                     const payload = await response.json();
                     if (!response.ok) {
+                      void handleRound2Answer(false);
                       setRound2Code("");
                       if (typeof payload.attempt === "number") {
                         setAttemptCount(payload.attempt);
@@ -218,6 +243,8 @@ export default function Round2Page() {
                       setRound2Status(payload.error ?? "Unable to submit code");
                       return;
                     }
+                    void handleRound2Answer(true);
+                    void playRound2Result(payload.qualified ? "win" : "lose");
                     setRound2Status(
                       payload.qualified
                         ? "Code accepted. You qualified for Round 3."
