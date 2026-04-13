@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-
-const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "";
 
 type TeamDetail = {
   id: string;
@@ -47,10 +46,18 @@ type LeaderboardEntry = {
   max_members?: number;
 };
 
+type TeamEventLog = {
+  id: string;
+  team_id: string;
+  team_name: string;
+  event_type: string;
+  message: string;
+  created_at: string;
+};
+
 export default function AdminDashboardPage() {
-  const [authorized, setAuthorized] = useState(false);
-  const [password, setPassword] = useState("");
-  const [authError, setAuthError] = useState("");
+  const router = useRouter();
+  const [authorized, setAuthorized] = useState(true);
   const [rounds, setRounds] = useState<RoundRecord[]>([]);
   const [roundDurationInput, setRoundDurationInput] = useState<
     Record<number, number>
@@ -73,29 +80,28 @@ export default function AdminDashboardPage() {
   const [rescueStatus, setRescueStatus] = useState("");
   const [rescueLoading, setRescueLoading] = useState(false);
   const [round2Inputs, setRound2Inputs] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    const id = window.setTimeout(() => {
-      const flag = sessionStorage.getItem("admin_access");
-      if (flag === "true") {
-        setAuthorized(true);
-        setAuthError("");
-      }
-    }, 0);
-    return () => window.clearTimeout(id);
-  }, []);
+  const [eventLogs, setEventLogs] = useState<TeamEventLog[]>([]);
 
   const getAdminHeaders = useCallback(() => {
-    const stored = sessionStorage.getItem("admin_password") ?? "";
-    return { "x-admin-password": stored };
+    return {};
   }, []);
 
   const handleUnauthorized = useCallback(() => {
-    sessionStorage.removeItem("admin_access");
-    sessionStorage.removeItem("admin_password");
     setAuthorized(false);
-    setAuthError("Admin session expired. Re-enter the password.");
-  }, []);
+    fetch("/api/admin/session", { method: "DELETE" }).catch(() => null);
+    router.replace("/admin-entry");
+  }, [router]);
+
+  useEffect(() => {
+    const verifySession = async () => {
+      const response = await fetch("/api/admin/session");
+      const data = await response.json().catch(() => ({ active: false }));
+      if (!response.ok || !data.active) {
+        handleUnauthorized();
+      }
+    };
+    verifySession();
+  }, [handleUnauthorized]);
 
   const fetchRounds = useCallback(async () => {
     const response = await fetch("/api/admin/rounds/list", {
@@ -138,11 +144,26 @@ export default function AdminDashboardPage() {
     }
   }, []);
 
+  const fetchEventLogs = useCallback(async () => {
+    const response = await fetch("/api/admin/events", {
+      headers: getAdminHeaders(),
+      cache: "no-store",
+    });
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    const data = await response.json().catch(() => []);
+    if (response.ok && Array.isArray(data)) {
+      setEventLogs(data);
+    }
+  }, [getAdminHeaders, handleUnauthorized]);
+
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([fetchRounds(), fetchTeams(), fetchLeaderboard()]);
+    await Promise.all([fetchRounds(), fetchTeams(), fetchLeaderboard(), fetchEventLogs()]);
     setRefreshing(false);
-  }, [fetchRounds, fetchTeams, fetchLeaderboard]);
+  }, [fetchRounds, fetchTeams, fetchLeaderboard, fetchEventLogs]);
 
   useEffect(() => {
     if (!authorized) {
@@ -218,22 +239,6 @@ export default function AdminDashboardPage() {
     };
   }, [authorized, refreshAll]);
 
-  const handleGate = () => {
-    if (!ADMIN_PASSWORD) {
-      setAuthError("Admin password is not configured.");
-      return;
-    }
-    if (password === ADMIN_PASSWORD) {
-      sessionStorage.setItem("admin_access", "true");
-      sessionStorage.setItem("admin_password", password);
-      setAuthorized(true);
-      setAuthError("");
-      setPassword("");
-    } else {
-      setAuthError("Incorrect password.");
-    }
-  };
-
   const handleRoundAction = async (
     action: "start" | "end" | "pause_team" | "resume_team",
     roundNumber: number,
@@ -243,7 +248,7 @@ export default function AdminDashboardPage() {
     setStatusMessage("");
     if (busyKey) {
       setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
-      setStatusMessage("Working...");
+      setStatusMessage("Syncing command...");
     }
     const payload: Record<string, unknown> = { action, roundNumber };
     if (teamId) {
@@ -287,7 +292,7 @@ export default function AdminDashboardPage() {
   ) => {
     if (busyKey) {
       setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
-      setStatusMessage("Working...");
+      setStatusMessage("Syncing command...");
     }
     const payload: Record<string, unknown> = { teamId, action };
     if (action !== "reset") {
@@ -324,7 +329,7 @@ export default function AdminDashboardPage() {
   const handleRemoveTeam = async (teamId: string, busyKey?: string) => {
     if (busyKey) {
       setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
-      setStatusMessage("Working...");
+      setStatusMessage("Syncing command...");
     }
     const response = await fetch("/api/admin/teams/remove", {
       method: "POST",
@@ -349,7 +354,7 @@ export default function AdminDashboardPage() {
   ) => {
     if (busyKey) {
       setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
-      setStatusMessage("Working...");
+      setStatusMessage("Syncing command...");
     }
     const response = await fetch("/api/admin/teams/restore", {
       method: "POST",
@@ -386,7 +391,7 @@ export default function AdminDashboardPage() {
   ) => {
     if (busyKey) {
       setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
-      setStatusMessage("Working...");
+      setStatusMessage("Syncing command...");
     }
     const response = await fetch("/api/admin/round2/code", {
       method: "POST",
@@ -572,43 +577,7 @@ export default function AdminDashboardPage() {
     [nowTime],
   );
 
-  if (!authorized) {
-    return (
-      <main className="page-shell min-h-screen flex items-center justify-center">
-        <div
-          className="w-full max-w-xl card relative"
-          style={{
-            background:
-              "radial-gradient(circle, rgba(180,255,57,0.05), transparent 60%), var(--bg-container)",
-          }}
-        >
-          <div className="absolute top-4 left-4 w-8 h-8 border-l-2 border-t-2 border-[var(--accent)]" />
-          <p className="label flex items-center gap-2 text-[var(--accent)]">
-            ENCRYPTED GATEWAY
-            <span className="inline-block w-1.5 h-1.5 bg-[var(--accent)]" style={{ animation: "pulse-dot 1s ease-in-out infinite" }} />
-          </p>
-          <h1 className="font-headline text-4xl md:text-5xl font-black uppercase leading-tight" style={{ letterSpacing: "-0.04em" }}>
-            ENTER ADMINISTRATIVE ACCESS KEY
-          </h1>
-          <input
-            type="password"
-            className="input-field"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="ACCESS KEY"
-          />
-          {authError && <p className="text-sm" style={{ color: "var(--error)" }} role="alert">{authError}</p>}
-          <button className="button-primary w-full" onClick={handleGate}>
-            AUTHORIZE →
-          </button>
-          <div className="grid grid-cols-2 gap-2">
-            <span className="label">TERMINAL: ADM_01</span>
-            <span className="label">LOCATION: CORE_SYSTEM</span>
-          </div>
-        </div>
-      </main>
-    );
-  }
+  if (!authorized) return null;
 
   return (
     <div className="app-layout">
@@ -631,6 +600,14 @@ export default function AdminDashboardPage() {
       <div className="app-main">
         <main className="page-shell space-y-6">
           <div className="space-y-2">
+            <button
+              type="button"
+              className="admin-toolbar-back"
+              onClick={() => window.history.back()}
+              aria-label="Go back"
+            >
+              ←
+            </button>
             <p className="section-tag">COMMAND_CENTER</p>
             <h1 className="font-headline text-5xl md:text-6xl font-black uppercase" style={{ letterSpacing: "-0.04em" }}>
               CORE_SYSTEM
@@ -650,15 +627,6 @@ export default function AdminDashboardPage() {
               if they need extra time after the real-world task.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="button-neutral text-sm"
-              onClick={() => window.history.back()}
-            >
-              Back
-            </button>
-          </div>
         </div>
         <div className="min-h-6" aria-live="polite">
           {statusMessage && (
@@ -667,9 +635,7 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {rounds
-            .filter((round) => round.round_number === 1)
-            .map((round) => {
+          {rounds.map((round) => {
             const roundNumber = round.round_number ?? 0;
             const isAvailable = availableRounds.includes(roundNumber);
             const isSelected = roundNumber === (selectedRound?.round_number ?? 0);
@@ -683,11 +649,17 @@ export default function AdminDashboardPage() {
                 onClick={() => setSelectedRoundNumber(roundNumber)}
                 disabled={!isAvailable}
               >
-                Round {roundNumber}
+                {roundNumber === 1 ? "Round 1 Control" : `Round ${roundNumber}`}
               </button>
             );
           })}
         </div>
+
+        {rounds.length === 0 && (
+          <p className="text-sm text-slate-300">
+            No round records found yet. Seed round data to unlock Start Round 1 controls.
+          </p>
+        )}
 
         {selectedRound && (
           <div className="rounded-2xl border border-slate-700/50 p-4 bg-slate-900/60 shadow-sm max-w-2xl">
@@ -742,7 +714,7 @@ export default function AdminDashboardPage() {
                     disabled={!isSelectedRoundAvailable || roundBusy}
                   >
                     {roundBusy
-                      ? "Working..."
+                      ? "Syncing..."
                       : isActive
                       ? "End Round"
                       : "Start Round"}
@@ -752,6 +724,33 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         )}
+
+        <div className="card admin-section space-y-4">
+          <div>
+            <p className="label">Live logs</p>
+            <h2 className="text-2xl font-semibold">Team activity feed</h2>
+            <p className="text-sm text-slate-300">
+              Includes mission assignment, briefing, and team timer starts.
+            </p>
+          </div>
+          <div className="space-y-2 max-h-72 overflow-auto">
+            {eventLogs.length === 0 && (
+              <p className="text-sm text-slate-400">No events yet.</p>
+            )}
+            {eventLogs.map((event) => (
+              <div key={event.id} className="rounded-xl border border-slate-700/40 bg-slate-900/60 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-100">{event.team_name}</p>
+                  <p className="text-xs text-slate-400">
+                    {new Date(event.created_at).toLocaleTimeString()}
+                  </p>
+                </div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">{event.event_type}</p>
+                <p className="text-sm text-slate-200">{event.message}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
           <div className="card admin-section space-y-6">
@@ -808,7 +807,7 @@ export default function AdminDashboardPage() {
               setRescueLoading(false);
             }}
           >
-            {rescueLoading ? "Generating..." : "Generate link"}
+            {rescueLoading ? "Building secure link..." : "Generate link"}
           </button>
         </div>
         {rescueStatus && <p className="text-sm text-slate-300">{rescueStatus}</p>}
@@ -877,6 +876,8 @@ export default function AdminDashboardPage() {
                     <div className="text-xs text-slate-300">
                       {team.eliminated_at
                         ? `Eliminated (Round ${team.eliminated_round ?? "?"})`
+                        : team.current_round_status === "paused"
+                        ? "Suspended"
                         : "Active"}
                     </div>
                     <div className="text-xs text-slate-400">
@@ -904,7 +905,7 @@ export default function AdminDashboardPage() {
                             }
                             disabled={addBusy}
                           >
-                            {addBusy ? "Working..." : "+1 Point"}
+                            {addBusy ? "Syncing..." : "+1 Point"}
                           </button>
                         );
                       })()}
@@ -919,7 +920,7 @@ export default function AdminDashboardPage() {
                             }
                             disabled={deductBusy}
                           >
-                            {deductBusy ? "Working..." : "-1 Point"}
+                            {deductBusy ? "Syncing..." : "-1 Point"}
                           </button>
                         );
                       })()}
@@ -936,7 +937,7 @@ export default function AdminDashboardPage() {
                             }
                             disabled={resetBusy}
                           >
-                            {resetBusy ? "Working..." : "Reset Score"}
+                            {resetBusy ? "Syncing..." : "Reset Score"}
                           </button>
                         );
                       })()}
@@ -949,7 +950,7 @@ export default function AdminDashboardPage() {
                             onClick={() => handleRemoveTeam(team.id, removeKey)}
                             disabled={removeBusy}
                           >
-                            {removeBusy ? "Working..." : "Remove Team"}
+                            {removeBusy ? "Syncing..." : "Remove Team"}
                           </button>
                         );
                       })()}
@@ -969,7 +970,7 @@ export default function AdminDashboardPage() {
                             team.current_round_status === "paused"
                               ? "Resume Team"
                               : team.current_round_status === "active"
-                              ? "Pause Team"
+                              ? "Suspend Team"
                               : "Start Team";
                           const tone =
                             team.current_round_status === "active"
@@ -988,7 +989,7 @@ export default function AdminDashboardPage() {
                               }
                               disabled={teamRoundBusy}
                             >
-                              {teamRoundBusy ? "Working..." : label}
+                              {teamRoundBusy ? "Syncing..." : label}
                             </button>
                           );
                         })()}
@@ -1006,7 +1007,7 @@ export default function AdminDashboardPage() {
                             }
                             disabled={restoreBusy}
                           >
-                            {restoreBusy ? "Working..." : "Restore Snapshot"}
+                            {restoreBusy ? "Syncing..." : "Restore Snapshot"}
                           </button>
                         );
                       })()}
@@ -1021,7 +1022,7 @@ export default function AdminDashboardPage() {
                             }
                             disabled={restoreTimeBusy}
                           >
-                            {restoreTimeBusy ? "Working..." : "Restore Time"}
+                            {restoreTimeBusy ? "Syncing..." : "Restore Time"}
                           </button>
                         );
                       })()}
@@ -1059,7 +1060,7 @@ export default function AdminDashboardPage() {
                 disabled={!(canStart || canEnd) || round2Busy}
               >
                 {round2Busy
-                  ? "Working..."
+                  ? "Syncing..."
                   : isActive
                   ? "End Round 2"
                   : "Start Round 2"}
@@ -1229,7 +1230,7 @@ export default function AdminDashboardPage() {
                             onClick={() => handleRemoveTeam(team.id, removeKey)}
                             disabled={removeBusy}
                           >
-                            {removeBusy ? "Working..." : "Remove Team"}
+                            {removeBusy ? "Syncing..." : "Remove Team"}
                           </button>
                         );
                       })()}

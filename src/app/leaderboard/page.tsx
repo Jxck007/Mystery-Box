@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { isTestModeEnabled } from "@/lib/test-mode";
+import { playSound } from "@/lib/sound-manager";
 
 type LeaderboardEntry = {
   id: string;
@@ -19,6 +20,10 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [checkedSession, setCheckedSession] = useState(false);
   const testMode = isTestModeEnabled();
+
+  useEffect(() => {
+    void playSound("LeaderBoard", { bypassCooldown: true });
+  }, []);
 
   const fetchLeaderboard = useCallback(async () => {
     setLoading(true);
@@ -99,6 +104,13 @@ export default function LeaderboardPage() {
     };
   }, [fetchLeaderboard, testMode]);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      fetchLeaderboard();
+    }, 8000);
+    return () => window.clearInterval(intervalId);
+  }, [fetchLeaderboard]);
+
   if (!checkedSession) {
     return (
       <main className="page-shell">
@@ -126,22 +138,14 @@ export default function LeaderboardPage() {
           <div>
             <p className="label">Live leaderboard</p>
             <h1 className="text-3xl font-semibold">Top teams</h1>
+            <span className="label text-[var(--text-muted)]">AUTO REFRESH: 8S</span>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              className="button-secondary px-3 py-1 text-xs"
-              onClick={() => router.back()}
-            >
-              BACK
-            </button>
-            <button
-              className="button-secondary px-3 py-1 text-xs"
-              onClick={fetchLeaderboard}
-              disabled={loading}
-            >
-              {loading ? "REFRESHING…" : "REFRESH"}
-            </button>
-          </div>
+          <button
+            className="button-secondary px-3 py-1 text-xs"
+            onClick={() => router.back()}
+          >
+            BACK
+          </button>
         </div>
 
         <div className="overflow-auto">

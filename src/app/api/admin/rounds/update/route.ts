@@ -237,6 +237,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if ((round.round_number ?? 0) === 2) {
+      await supabase
+        .from("teams")
+        .update({
+          score: 0,
+          round2_solved_at: null,
+          round2_status: null,
+          round2_lock_until: null,
+        })
+        .eq("is_active", true);
+    }
+
     const { data: allTeams } = await supabase.from("teams").select("id");
     if (allTeams && allTeams.length > 0) {
       await supabase.from("team_events").insert(

@@ -33,6 +33,8 @@ export default function Round2Page() {
   const [team, setTeam] = useState<TeamDetail | null>(null);
   const [round2Code, setRound2Code] = useState("");
   const [round2Status, setRound2Status] = useState("");
+  const [attemptCount, setAttemptCount] = useState(0);
+  const [lastLockSeconds, setLastLockSeconds] = useState(10);
   const [loading, setLoading] = useState(false);
   const testMode = isTestModeEnabled();
 
@@ -180,6 +182,9 @@ export default function Round2Page() {
                   className="keypad-btn submit"
                   onClick={async () => {
                     if (testMode) {
+                      if (round2Code !== "1234") {
+                        setRound2Code("");
+                      }
                       setRound2Status(
                         round2Code === "1234"
                           ? "Code accepted. You qualified for Round 3."
@@ -203,6 +208,13 @@ export default function Round2Page() {
                     });
                     const payload = await response.json();
                     if (!response.ok) {
+                      setRound2Code("");
+                      if (typeof payload.attempt === "number") {
+                        setAttemptCount(payload.attempt);
+                      }
+                      if (typeof payload.lockSeconds === "number") {
+                        setLastLockSeconds(payload.lockSeconds);
+                      }
                       setRound2Status(payload.error ?? "Unable to submit code");
                       return;
                     }
@@ -227,9 +239,53 @@ export default function Round2Page() {
           )}
         </section>
         <aside className="md:col-span-5 space-y-4">
-          <div className="card min-h-48 justify-end" style={{ background: "var(--bg-high)" }}>
-            <p className="label">LIVE_FEED</p>
-            <p className="font-mono text-xs text-[var(--text-muted)]">NODE_STREAM / SECURE_OVERLAY</p>
+          <div className="card space-y-4" style={{ background: "var(--bg-high)" }}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="label">LIVE_FEED</p>
+                <p className="font-mono text-xs text-[var(--text-muted)]">ROUND 2 STATUS</p>
+              </div>
+              <span className="label text-(--accent)">
+                {round?.status === "active" ? "ONLINE" : round?.status?.toUpperCase() ?? "IDLE"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="label">ROUND</p>
+                <p className="font-mono text-xs">{round?.round_number ?? 2}</p>
+              </div>
+              <div>
+                <p className="label">TEAM STATUS</p>
+                <p className="font-mono text-xs">
+                  {team?.round2_solved_at
+                    ? team.round2_status === "qualified"
+                      ? "QUALIFIED"
+                      : "SOLVED / FULL"
+                    : team?.round2_code
+                      ? "CODE ASSIGNED"
+                      : "WAITING"}
+                </p>
+              </div>
+              <div>
+                <p className="label">CODE SLOTS</p>
+                <p className="font-mono text-xs">{round2Code.length}/4 ENTERED</p>
+              </div>
+              <div>
+                <p className="label">LOCK</p>
+                <p className="font-mono text-xs">
+                  {attemptCount > 0 ? `${lastLockSeconds}s / ATTEMPT ${attemptCount}` : "NONE"}
+                </p>
+              </div>
+            </div>
+
+            <div className="banner paused">
+              {team?.round2_solved_at
+                ? "This team already submitted Round 2."
+                : team?.round2_code
+                  ? "Enter the 4-digit code to qualify before other teams do."
+                  : "Waiting for the admin to assign your code."}
+            </div>
           </div>
           <div className="card space-y-3">
             <div>
@@ -243,7 +299,11 @@ export default function Round2Page() {
               <div><p className="label">LATENCY</p><p className="font-mono text-xs">0.002MS</p></div>
               <div><p className="label">ENCRYPTION</p><p className="font-mono text-xs">QUAD_PIN</p></div>
             </div>
-            <div className="banner ended">3 ATTEMPTS REMAINING BEFORE LOCKOUT</div>
+            <div className="banner ended">
+              {attemptCount === 0
+                ? "Wrong attempts lock for 10s. After 3 attempts, lock increases to 30s."
+                : `Attempt ${attemptCount}. Current lock: ${lastLockSeconds}s.`}
+            </div>
             <button className="button-secondary" onClick={() => router.push("/leaderboard")}>
               VIEW LEADERBOARD
             </button>

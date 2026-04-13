@@ -161,8 +161,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const selectedGame =
-    availableGames[Math.floor(Math.random() * availableGames.length)];
+  const typeCounts = (usedGames ?? []).reduce<Record<string, number>>((acc, entry) => {
+    const matched = (roundGames ?? []).find((game) => game.id === entry.box_id);
+    const type = (matched?.game_type ?? matched?.game_title ?? "generic").toLowerCase();
+    acc[type] = (acc[type] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const sortedByVariety = [...availableGames].sort((a, b) => {
+    const aType = (a.game_type ?? a.game_title ?? "generic").toLowerCase();
+    const bType = (b.game_type ?? b.game_title ?? "generic").toLowerCase();
+    return (typeCounts[aType] ?? 0) - (typeCounts[bType] ?? 0);
+  });
+
+  const topSlice = sortedByVariety.slice(0, Math.min(3, sortedByVariety.length));
+  const selectedGame = topSlice[Math.floor(Math.random() * topSlice.length)];
 
   const { data: inserted, error: openError } = await supabase
     .from("box_opens")
@@ -182,6 +195,12 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+
+  await supabase.from("team_events").insert({
+    team_id: teamId,
+    event_type: "box",
+    message: `Mission assigned: ${selectedGame.game_title ?? "Challenge"}. Review rules and press start.`,
+  });
 
   const { data: teamRound } = await supabase
     .from("team_rounds")

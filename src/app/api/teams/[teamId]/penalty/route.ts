@@ -41,6 +41,19 @@ export async function POST(
     .maybeSingle();
 
   if (roundError || !teamRound) {
+    const { data: pausedRound } = await supabase
+      .from("team_rounds")
+      .select("id")
+      .eq("team_id", teamId)
+      .eq("status", "paused")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (pausedRound) {
+      return NextResponse.json({ success: true, alreadyPaused: true });
+    }
+
     return NextResponse.json(
       { error: roundError?.message ?? "No active round" },
       { status: 400 },
@@ -65,7 +78,7 @@ export async function POST(
   await supabase
     .from("team_rounds")
     .update({
-      status: "ended",
+      status: "paused",
       ended_at: nowIso,
       penalty_remaining_seconds: remaining,
       penalty_team_score: team?.score ?? 0,
@@ -79,8 +92,8 @@ export async function POST(
 
   await supabase.from("team_events").insert({
     team_id: teamId,
-    event_type: "round",
-    message: "Round ended due to leaving the game tab. Ask admin to restore.",
+    event_type: "security",
+    message: "Team suspended for leaving the game. Admin resume required.",
   });
 
   return NextResponse.json({ success: true });

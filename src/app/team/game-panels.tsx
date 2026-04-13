@@ -1,12 +1,9 @@
-﻿"use client";
+"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-// ─────────────────────────────────────────────
-//  SEEDED RANDOM HELPERS
-// ─────────────────────────────────────────────
-
-export function seededRandom(seed: string) {
+// ── Seeded PRNG (keep exactly as is) ──
+function seededRandom(seed: string): () => number {
   let h = 1779033703 ^ seed.length;
   for (let i = 0; i < seed.length; i++) {
     h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
@@ -20,8 +17,9 @@ export function seededRandom(seed: string) {
   };
 }
 
-export function shuffle<T>(items: T[], rand: () => number): T[] {
-  const result = [...items];
+// ── Shuffle with seed (keep exactly as is) ──
+function shuffle<T>(array: T[], rand: () => number): T[] {
+  const result = [...array];
   for (let i = result.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1));
     [result[i], result[j]] = [result[j], result[i]];
@@ -29,530 +27,585 @@ export function shuffle<T>(items: T[], rand: () => number): T[] {
   return result;
 }
 
-export function pickFromBank<T>(seed: string, salt: string, bank: T[]): T {
-  const rand = seededRandom(seed + salt);
-  return bank[Math.floor(rand() * bank.length)];
-}
-
-export function pickFromBankIndexed<T>(
+// ── Pick from bank by index (keep exactly as is) ──
+function pickFromBankIndexed<T>(
   seed: string,
-  salt: string,
+  namespace: string,
   bank: T[],
   index: number,
 ): T {
   const order = shuffle(
     bank.map((_, idx) => idx),
-    seededRandom(`${seed}-${salt}-order`),
+    seededRandom(`${seed}-${namespace}-order`),
   );
   return bank[order[index % bank.length]];
 }
 
+export type MiniGameResult = { success: boolean; details: string };
+
 export type MiniGameProps = {
   seed: string;
   questionIndex: number;
-  disabled?: boolean;
-  onComplete: (result: { success: boolean; details: string }) => void;
+  disabled: boolean;
+  onComplete: (result: MiniGameResult) => void;
 };
 
-// ─────────────────────────────────────────────
-//  1. RAPID QUIZ  (50 questions)
-//     Pick the correct answer from four options
-// ─────────────────────────────────────────────
-
-export type QuizQuestion = {
-  q: string;
+type QuizQuestion = { q: string; options: [string, string, string, string]; a: string };
+type TrueFalseQuestion = { statement: string; answer: boolean };
+type OddOneOutQuestion = { items: [string, string, string, string]; odd: string };
+type NumberSequenceQuestion = { sequence: [number, number, number]; answer: number };
+type QuickMathQuestion = { display: string; answer: number; options: [number, number, number, number] };
+type ObjectCountQuestion = { grid: string[]; target: string; count: number };
+type WordScrambleQuestion = { word: string; scrambled: string; options: [string, string, string, string] };
+type MissingLetterQuestion = { word: string; blankIndex: number; options: [string, string, string, string] };
+type QuickArrangeQuestion = {
+  items: [string, string, string];
+  shuffled: [string, string, string];
   options: [string, string, string, string];
-  a: string;
 };
 
-export const RAPID_QUIZ_BANK: QuizQuestion[] = [
-  { q: "Which planet is known as the Red Planet?", options: ["Mars", "Venus", "Jupiter", "Mercury"], a: "Mars" },
-  { q: "How many sides does a hexagon have?", options: ["5", "6", "7", "8"], a: "6" },
-  { q: "What gas do plants absorb from the air?", options: ["Oxygen", "Carbon dioxide", "Nitrogen", "Helium"], a: "Carbon dioxide" },
-  { q: "Which ocean is the largest?", options: ["Pacific", "Atlantic", "Indian", "Arctic"], a: "Pacific" },
-  { q: "How many days are in a leap year?", options: ["365", "366", "364", "360"], a: "366" },
-  { q: "Which continent is the Sahara Desert in?", options: ["Africa", "Asia", "Europe", "Australia"], a: "Africa" },
-  { q: "What is H₂O commonly known as?", options: ["Water", "Oxygen", "Hydrogen", "Salt"], a: "Water" },
-  { q: "Which animal is known as the King of the Jungle?", options: ["Lion", "Tiger", "Elephant", "Bear"], a: "Lion" },
-  { q: "What do bees produce?", options: ["Honey", "Milk", "Bread", "Wax"], a: "Honey" },
-  { q: "Which is the smallest prime number?", options: ["1", "2", "3", "5"], a: "2" },
-  { q: "What is the capital of Japan?", options: ["Tokyo", "Kyoto", "Osaka", "Nagoya"], a: "Tokyo" },
-  { q: "Which planet is closest to the Sun?", options: ["Mercury", "Earth", "Venus", "Mars"], a: "Mercury" },
-  { q: "Which instrument has black and white keys?", options: ["Piano", "Violin", "Drum", "Flute"], a: "Piano" },
-  { q: "Which shape has four equal sides?", options: ["Square", "Triangle", "Circle", "Oval"], a: "Square" },
-  { q: "How many planets are in the solar system?", options: ["7", "8", "9", "10"], a: "8" },
-  { q: "Which metal is liquid at room temperature?", options: ["Mercury", "Gold", "Iron", "Copper"], a: "Mercury" },
-  { q: "Which fruit is said to keep the doctor away?", options: ["Apple", "Banana", "Grape", "Pear"], a: "Apple" },
-  { q: "What is the largest land animal?", options: ["Elephant", "Rhino", "Hippo", "Giraffe"], a: "Elephant" },
-  { q: "Which planet has rings around it?", options: ["Saturn", "Mars", "Venus", "Mercury"], a: "Saturn" },
-  { q: "How many hours are in a day?", options: ["12", "18", "24", "36"], a: "24" },
-  { q: "What color do you get mixing red and blue?", options: ["Purple", "Green", "Orange", "Brown"], a: "Purple" },
-  { q: "Which animal has black and white stripes?", options: ["Zebra", "Tiger", "Horse", "Panda"], a: "Zebra" },
-  { q: "Which is the largest planet?", options: ["Jupiter", "Saturn", "Neptune", "Earth"], a: "Jupiter" },
-  { q: "What is 3 × 4?", options: ["7", "12", "14", "10"], a: "12" },
-  { q: "Which season comes after spring?", options: ["Summer", "Autumn", "Winter", "Monsoon"], a: "Summer" },
-  { q: "Which is faster — sound or light?", options: ["Light", "Sound", "Same speed", "Depends"], a: "Light" },
-  { q: "Which common bird lays eggs?", options: ["Duck", "Dog", "Cat", "Cow"], a: "Duck" },
-  { q: "Which is a mammal?", options: ["Whale", "Shark", "Trout", "Octopus"], a: "Whale" },
-  { q: "What is the capital of France?", options: ["Paris", "Rome", "Madrid", "Berlin"], a: "Paris" },
-  { q: "How many continents are there?", options: ["5", "6", "7", "8"], a: "7" },
-  { q: "Which gas is most common in the air?", options: ["Nitrogen", "Oxygen", "Carbon dioxide", "Helium"], a: "Nitrogen" },
-  { q: "Which month has the fewest days?", options: ["February", "April", "June", "September"], a: "February" },
-  { q: "What do you call a baby dog?", options: ["Puppy", "Kitten", "Cub", "Calf"], a: "Puppy" },
-  { q: "In which direction does the Sun rise?", options: ["East", "West", "North", "South"], a: "East" },
-  { q: "How many letters are in the English alphabet?", options: ["24", "25", "26", "27"], a: "26" },
-  { q: "Which object is used to tell time?", options: ["Clock", "Brush", "Spoon", "Bottle"], a: "Clock" },
-  { q: "What is the largest mammal?", options: ["Blue whale", "Elephant", "Giraffe", "Hippo"], a: "Blue whale" },
-  { q: "Which is the coldest continent?", options: ["Antarctica", "Europe", "Asia", "Africa"], a: "Antarctica" },
-  { q: "Which fruit is yellow and curved?", options: ["Banana", "Apple", "Grape", "Pear"], a: "Banana" },
-  { q: "What color is a stop sign?", options: ["Red", "Green", "Blue", "Yellow"], a: "Red" },
-  { q: "How many wheels does a bicycle have?", options: ["1", "2", "3", "4"], a: "2" },
-  { q: "Which planet do we live on?", options: ["Earth", "Mars", "Venus", "Saturn"], a: "Earth" },
-  { q: "Which animal is known for its long neck?", options: ["Giraffe", "Bear", "Rabbit", "Fox"], a: "Giraffe" },
-  { q: "How many minutes are in an hour?", options: ["30", "45", "60", "90"], a: "60" },
-  { q: "Which is a primary color?", options: ["Blue", "Purple", "Green", "Orange"], a: "Blue" },
-  { q: "What does a thermometer measure?", options: ["Temperature", "Speed", "Weight", "Distance"], a: "Temperature" },
-  { q: "Which animal hops?", options: ["Kangaroo", "Elephant", "Dolphin", "Horse"], a: "Kangaroo" },
-  { q: "Which planet is known for its blue color?", options: ["Neptune", "Mars", "Mercury", "Venus"], a: "Neptune" },
-  { q: "What is the opposite of cold?", options: ["Hot", "Wet", "Dark", "Soft"], a: "Hot" },
-  { q: "How many legs does a spider have?", options: ["6", "8", "10", "12"], a: "8" },
+function toTuple4<T>(arr: T[]): [T, T, T, T] {
+  return [arr[0], arr[1], arr[2], arr[3]];
+}
+
+function uniqueNumbers(values: number[], fallbackSeed: string): [number, number, number, number] {
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const v of values) {
+    if (!seen.has(v)) {
+      seen.add(v);
+      out.push(v);
+    }
+  }
+  const rand = seededRandom(fallbackSeed);
+  while (out.length < 4) {
+    const next = Math.floor(rand() * 100) + 1;
+    if (!seen.has(next)) {
+      seen.add(next);
+      out.push(next);
+    }
+  }
+  return [out[0], out[1], out[2], out[3]];
+}
+
+const RAPID_CAPITALS: Array<[string, string]> = [
+  ["Australia", "Canberra"], ["Canada", "Ottawa"], ["Brazil", "Brasilia"], ["Japan", "Tokyo"],
+  ["India", "New Delhi"], ["Turkey", "Ankara"], ["Egypt", "Cairo"], ["South Korea", "Seoul"],
+  ["South Africa", "Pretoria"], ["Switzerland", "Bern"], ["New Zealand", "Wellington"],
+  ["Nigeria", "Abuja"], ["Argentina", "Buenos Aires"], ["Thailand", "Bangkok"], ["Norway", "Oslo"],
+  ["Sweden", "Stockholm"], ["Denmark", "Copenhagen"], ["Poland", "Warsaw"], ["Portugal", "Lisbon"],
+  ["Austria", "Vienna"], ["Belgium", "Brussels"], ["Netherlands", "Amsterdam"], ["Finland", "Helsinki"],
+  ["Ireland", "Dublin"], ["Pakistan", "Islamabad"], ["Indonesia", "Jakarta"], ["Malaysia", "Kuala Lumpur"],
+  ["Kenya", "Nairobi"], ["Morocco", "Rabat"], ["Peru", "Lima"], ["Chile", "Santiago"],
+  ["Colombia", "Bogota"], ["Greece", "Athens"], ["Hungary", "Budapest"], ["Czechia", "Prague"],
 ];
 
-// ─────────────────────────────────────────────
-//  2. FAST TRIVIA  (50 questions)
-//     One-tap multiple-choice trivia
-// ─────────────────────────────────────────────
-
-export const FAST_TRIVIA_BANK: QuizQuestion[] = [
-  { q: "Which ocean is the largest?", options: ["Pacific", "Atlantic", "Indian", "Arctic"], a: "Pacific" },
-  { q: "What is the capital of Japan?", options: ["Tokyo", "Kyoto", "Osaka", "Nagoya"], a: "Tokyo" },
-  { q: "Which is the smallest prime number?", options: ["1", "2", "3", "5"], a: "2" },
-  { q: "Which planet is known as the Morning Star?", options: ["Venus", "Mars", "Jupiter", "Mercury"], a: "Venus" },
-  { q: "What is the largest mammal?", options: ["Blue whale", "Elephant", "Giraffe", "Hippo"], a: "Blue whale" },
-  { q: "Which country has the maple leaf on its flag?", options: ["Canada", "USA", "UK", "Australia"], a: "Canada" },
-  { q: "How many continents are there?", options: ["5", "6", "7", "8"], a: "7" },
-  { q: "Which planet has the most moons?", options: ["Saturn", "Earth", "Mars", "Venus"], a: "Saturn" },
-  { q: "What is the hardest natural substance?", options: ["Diamond", "Gold", "Iron", "Silver"], a: "Diamond" },
-  { q: "Which organ pumps blood?", options: ["Heart", "Liver", "Brain", "Lung"], a: "Heart" },
-  { q: "What is the capital of Italy?", options: ["Rome", "Milan", "Venice", "Turin"], a: "Rome" },
-  { q: "Which gas do humans need to breathe?", options: ["Oxygen", "Nitrogen", "Carbon dioxide", "Helium"], a: "Oxygen" },
-  { q: "Which planet is known for its rings?", options: ["Saturn", "Mars", "Venus", "Mercury"], a: "Saturn" },
-  { q: "How many sides does a triangle have?", options: ["3", "4", "5", "6"], a: "3" },
-  { q: "Which continent is Brazil in?", options: ["South America", "Africa", "Europe", "Asia"], a: "South America" },
-  { q: "What is the capital of Spain?", options: ["Madrid", "Barcelona", "Valencia", "Seville"], a: "Madrid" },
-  { q: "Which is the tallest mountain?", options: ["Everest", "K2", "Kilimanjaro", "Denali"], a: "Everest" },
-  { q: "Which animal has black and white stripes?", options: ["Zebra", "Tiger", "Horse", "Panda"], a: "Zebra" },
-  { q: "Which planet is closest to the Sun?", options: ["Mercury", "Earth", "Venus", "Mars"], a: "Mercury" },
-  { q: "Which is the largest desert?", options: ["Sahara", "Gobi", "Kalahari", "Mojave"], a: "Sahara" },
-  { q: "What is the capital of Germany?", options: ["Berlin", "Munich", "Hamburg", "Frankfurt"], a: "Berlin" },
-  { q: "Which animal is a marsupial?", options: ["Kangaroo", "Elephant", "Lion", "Horse"], a: "Kangaroo" },
-  { q: "Which is a primary color?", options: ["Red", "Green", "Purple", "Orange"], a: "Red" },
-  { q: "How many bones are in the human body?", options: ["206", "201", "212", "198"], a: "206" },
-  { q: "Which river is the longest?", options: ["Nile", "Amazon", "Yangtze", "Mississippi"], a: "Nile" },
-  { q: "What is the capital of Australia?", options: ["Canberra", "Sydney", "Melbourne", "Perth"], a: "Canberra" },
-  { q: "Which planet is known as the Blue Planet?", options: ["Earth", "Neptune", "Uranus", "Saturn"], a: "Earth" },
-  { q: "Which is the largest bird?", options: ["Ostrich", "Eagle", "Penguin", "Parrot"], a: "Ostrich" },
-  { q: "What do you call a baby cat?", options: ["Kitten", "Puppy", "Cub", "Calf"], a: "Kitten" },
-  { q: "Which instrument has six strings?", options: ["Guitar", "Piano", "Flute", "Drum"], a: "Guitar" },
-  { q: "Which planet is known for strong winds?", options: ["Neptune", "Mars", "Mercury", "Venus"], a: "Neptune" },
-  { q: "What is the capital of Egypt?", options: ["Cairo", "Giza", "Alexandria", "Luxor"], a: "Cairo" },
-  { q: "Which metal is most used in wiring?", options: ["Copper", "Gold", "Silver", "Iron"], a: "Copper" },
-  { q: "Which animal is known for its long neck?", options: ["Giraffe", "Camel", "Llama", "Deer"], a: "Giraffe" },
-  { q: "Which planet has the Great Red Spot?", options: ["Jupiter", "Mars", "Venus", "Mercury"], a: "Jupiter" },
-  { q: "Which sport uses a bat and a ball?", options: ["Baseball", "Soccer", "Tennis", "Hockey"], a: "Baseball" },
-  { q: "How many hours are in a day?", options: ["12", "18", "24", "36"], a: "24" },
-  { q: "Which is the largest continent?", options: ["Asia", "Africa", "Europe", "Australia"], a: "Asia" },
-  { q: "What is the capital of Greece?", options: ["Athens", "Sparta", "Thessaloniki", "Corfu"], a: "Athens" },
-  { q: "Which animal is known for its shell?", options: ["Turtle", "Rabbit", "Dog", "Fox"], a: "Turtle" },
-  { q: "Which gas is most common in the atmosphere?", options: ["Nitrogen", "Oxygen", "Carbon dioxide", "Helium"], a: "Nitrogen" },
-  { q: "Which season comes after winter?", options: ["Spring", "Autumn", "Summer", "Monsoon"], a: "Spring" },
-  { q: "Which planet is the hottest?", options: ["Venus", "Mercury", "Mars", "Jupiter"], a: "Venus" },
-  { q: "What is the capital of South Korea?", options: ["Seoul", "Busan", "Daegu", "Incheon"], a: "Seoul" },
-  { q: "Which is a renewable energy source?", options: ["Wind", "Coal", "Oil", "Gas"], a: "Wind" },
-  { q: "Which organ helps you breathe?", options: ["Lungs", "Heart", "Kidneys", "Liver"], a: "Lungs" },
-  { q: "Which is the tallest animal?", options: ["Giraffe", "Elephant", "Zebra", "Lion"], a: "Giraffe" },
-  { q: "Which instrument measures temperature?", options: ["Thermometer", "Barometer", "Compass", "Altimeter"], a: "Thermometer" },
-  { q: "Which country is famous for pizza?", options: ["Italy", "France", "Spain", "Germany"], a: "Italy" },
-  { q: "Which is the capital of the UK?", options: ["London", "Manchester", "Bristol", "Liverpool"], a: "London" },
+const RAPID_FACTS: Array<{ q: string; a: string; options: [string, string, string, string] }> = [
+  { q: "Closest planet to Sun?", a: "Mercury", options: ["Mercury", "Venus", "Mars", "Earth"] },
+  { q: "Largest planet?", a: "Jupiter", options: ["Jupiter", "Saturn", "Neptune", "Earth"] },
+  { q: "Hottest planet?", a: "Venus", options: ["Venus", "Mercury", "Mars", "Jupiter"] },
+  { q: "Gas plants absorb?", a: "Carbon dioxide", options: ["Carbon dioxide", "Oxygen", "Nitrogen", "Helium"] },
+  { q: "Chemical symbol for gold?", a: "Au", options: ["Au", "Ag", "Gd", "Go"] },
+  { q: "Hardest natural substance?", a: "Diamond", options: ["Diamond", "Quartz", "Granite", "Iron"] },
+  { q: "Largest ocean?", a: "Pacific", options: ["Pacific", "Atlantic", "Indian", "Arctic"] },
+  { q: "Fastest land animal?", a: "Cheetah", options: ["Cheetah", "Leopard", "Gazelle", "Tiger"] },
+  { q: "Tallest mountain?", a: "Everest", options: ["Everest", "K2", "Kilimanjaro", "Denali"] },
+  { q: "Smallest prime number?", a: "2", options: ["2", "1", "3", "5"] },
+  { q: "Square root of 81?", a: "9", options: ["9", "8", "7", "6"] },
+  { q: "Water boils at sea level?", a: "100°C", options: ["100°C", "90°C", "80°C", "110°C"] },
+  { q: "How many continents?", a: "7", options: ["7", "6", "5", "8"] },
+  { q: "How many sides hexagon?", a: "6", options: ["6", "5", "7", "8"] },
+  { q: "Largest mammal?", a: "Blue whale", options: ["Blue whale", "Elephant", "Giraffe", "Hippo"] },
+  { q: "Planet with rings?", a: "Saturn", options: ["Saturn", "Jupiter", "Mars", "Venus"] },
+  { q: "Who wrote Hamlet?", a: "Shakespeare", options: ["Shakespeare", "Dickens", "Homer", "Twain"] },
+  { q: "First month of year?", a: "January", options: ["January", "March", "December", "June"] },
+  { q: "What is H2O?", a: "Water", options: ["Water", "Hydrogen", "Oxygen", "Salt"] },
+  { q: "Main gas in air?", a: "Nitrogen", options: ["Nitrogen", "Oxygen", "Argon", "Carbon dioxide"] },
+  { q: "Which metal is liquid?", a: "Mercury", options: ["Mercury", "Gallium", "Silver", "Aluminum"] },
+  { q: "Currency of Japan?", a: "Yen", options: ["Yen", "Won", "Yuan", "Ringgit"] },
+  { q: "Who painted Mona Lisa?", a: "Da Vinci", options: ["Da Vinci", "Van Gogh", "Picasso", "Monet"] },
+  { q: "Olympic symbol has rings?", a: "Five", options: ["Five", "Four", "Six", "Seven"] },
+  { q: "Animal called ship desert?", a: "Camel", options: ["Camel", "Horse", "Donkey", "Llama"] },
+  { q: "Largest desert on Earth?", a: "Antarctica", options: ["Antarctica", "Sahara", "Gobi", "Arabian"] },
+  { q: "How many bones adult?", a: "206", options: ["206", "201", "212", "198"] },
+  { q: "Red Planet nickname?", a: "Mars", options: ["Mars", "Venus", "Mercury", "Jupiter"] },
+  { q: "Earth satellite called?", a: "Moon", options: ["Moon", "Sun", "Mars", "Pluto"] },
+  { q: "Instrument with keys?", a: "Piano", options: ["Piano", "Guitar", "Drum", "Violin"] },
+  { q: "First element periodic table?", a: "Hydrogen", options: ["Hydrogen", "Helium", "Lithium", "Oxygen"] },
+  { q: "Closest star to Earth?", a: "Sun", options: ["Sun", "Sirius", "Polaris", "Alpha Centauri"] },
+  { q: "Largest internal organ?", a: "Liver", options: ["Liver", "Lung", "Heart", "Kidney"] },
+  { q: "Language in Brazil?", a: "Portuguese", options: ["Portuguese", "Spanish", "French", "English"] },
+  { q: "How many minutes hour?", a: "60", options: ["60", "50", "100", "30"] },
+  { q: "How many hours day?", a: "24", options: ["24", "12", "18", "36"] },
+  { q: "Device measures quakes?", a: "Seismograph", options: ["Seismograph", "Barometer", "Thermometer", "Compass"] },
+  { q: "Animal with trunk?", a: "Elephant", options: ["Elephant", "Rhino", "Hippo", "Tapir"] },
+  { q: "Fastest bird dive?", a: "Peregrine", options: ["Peregrine", "Eagle", "Falcon", "Hawk"] },
+  { q: "Most spoken language?", a: "Mandarin", options: ["Mandarin", "English", "Spanish", "Hindi"] },
+  { q: "Who discovered penicillin?", a: "Fleming", options: ["Fleming", "Curie", "Einstein", "Pasteur"] },
+  { q: "Which blood type universal donor?", a: "O negative", options: ["O negative", "O positive", "AB negative", "A negative"] },
+  { q: "Great Wall visible from Moon?", a: "No", options: ["No", "Yes", "Sometimes", "Only night"] },
+  { q: "Capital city of USA?", a: "Washington", options: ["Washington", "New York", "Boston", "Chicago"] },
+  { q: "Country shaped like boot?", a: "Italy", options: ["Italy", "Spain", "Portugal", "Greece"] },
+  { q: "Which sport uses wickets?", a: "Cricket", options: ["Cricket", "Baseball", "Hockey", "Tennis"] },
+  { q: "Inertia law by whom?", a: "Newton", options: ["Newton", "Galileo", "Einstein", "Kepler"] },
+  { q: "Largest island world?", a: "Greenland", options: ["Greenland", "Iceland", "Borneo", "Madagascar"] },
+  { q: "Smallest continent?", a: "Australia", options: ["Australia", "Europe", "Antarctica", "South America"] },
+  { q: "First Olympics held where?", a: "Greece", options: ["Greece", "Italy", "France", "Egypt"] },
 ];
 
-// ─────────────────────────────────────────────
-//  3. TRUE OR FALSE  (50 questions)
-//     Is the math or fact statement correct?
-// ─────────────────────────────────────────────
+function buildRapidQuizBank(): QuizQuestion[] {
+  const capitals = RAPID_CAPITALS.slice(0, 12).map((entry, i) => {
+    const capitalsPool = RAPID_CAPITALS.map((x) => x[1]).filter((c) => c !== entry[1]);
+    const rand = seededRandom(`rapid-capital-${i}`);
+    const wrongs = shuffle(capitalsPool, rand).slice(0, 3);
+    return {
+      q: `Capital of ${entry[0]}?`,
+      a: entry[1],
+      options: toTuple4(shuffle([entry[1], wrongs[0], wrongs[1], wrongs[2]], seededRandom(`rapid-opt-${i}`))),
+    };
+  });
+  const facts = RAPID_FACTS.map((item, i) => ({
+    q: item.q,
+    a: item.a,
+    options: toTuple4(shuffle([...item.options], seededRandom(`rapid-fact-${i}`))),
+  }));
+  return [...facts, ...capitals, ...facts, ...facts].slice(0, 140);
+}
 
-export type TrueFalseQuestion = { text: string; correct: boolean };
-
-export const TRUE_FALSE_BANK: TrueFalseQuestion[] = [
-  { text: "5 + 7 = 12", correct: true },
-  { text: "8 × 3 = 25", correct: false },
-  { text: "15 - 6 = 9", correct: true },
-  { text: "4 × 4 = 18", correct: false },
-  { text: "9 + 9 = 18", correct: true },
-  { text: "100 ÷ 5 = 25", correct: false },
-  { text: "7 × 6 = 42", correct: true },
-  { text: "3 + 8 = 12", correct: false },
-  { text: "6 × 7 = 42", correct: true },
-  { text: "50 - 13 = 38", correct: false },
-  { text: "9 × 9 = 81", correct: true },
-  { text: "4 + 17 = 22", correct: false },
-  { text: "12 × 3 = 36", correct: true },
-  { text: "8 + 9 = 18", correct: false },
-  { text: "11 × 4 = 44", correct: true },
-  { text: "6 × 8 = 50", correct: false },
-  { text: "7 + 14 = 21", correct: true },
-  { text: "9 × 6 = 55", correct: false },
-  { text: "5 × 8 = 40", correct: true },
-  { text: "17 - 9 = 7", correct: false },
-  { text: "4 × 9 = 36", correct: true },
-  { text: "13 + 8 = 22", correct: false },
-  { text: "3 × 12 = 36", correct: true },
-  { text: "25 ÷ 5 = 6", correct: false },
-  { text: "8 × 8 = 64", correct: true },
-  { text: "5 × 7 = 38", correct: false },
-  { text: "6 + 18 = 24", correct: true },
-  { text: "11 × 5 = 60", correct: false },
-  { text: "7 × 7 = 49", correct: true },
-  { text: "14 + 9 = 24", correct: false },
-  { text: "6 × 9 = 54", correct: true },
-  { text: "9 + 13 = 23", correct: false },
-  { text: "5 × 5 = 25", correct: true },
-  { text: "3 × 9 = 28", correct: false },
-  { text: "8 + 16 = 24", correct: true },
-  { text: "7 × 8 = 58", correct: false },
-  { text: "4 × 7 = 28", correct: true },
-  { text: "9 + 14 = 24", correct: false },
-  { text: "11 × 3 = 33", correct: true },
-  { text: "6 × 6 = 37", correct: false },
-  { text: "5 + 16 = 21", correct: true },
-  { text: "8 × 4 = 33", correct: false },
-  { text: "7 × 9 = 63", correct: true },
-  { text: "12 + 9 = 22", correct: false },
-  { text: "3 × 8 = 24", correct: true },
-  { text: "5 × 9 = 46", correct: false },
-  { text: "6 + 19 = 25", correct: true },
-  { text: "4 × 8 = 33", correct: false },
-  { text: "9 × 4 = 36", correct: true },
-  { text: "7 + 18 = 26", correct: false },
+const FAST_TRIVIA_RAW: QuizQuestion[] = [
+  { q: "India won 2011 Cricket World Cup?", options: ["India", "Australia", "England", "Sri Lanka"], a: "India" },
+  { q: "National animal of India?", options: ["Tiger", "Lion", "Elephant", "Leopard"], a: "Tiger" },
+  { q: "Bollywood in which city?", options: ["Mumbai", "Delhi", "Kolkata", "Chennai"], a: "Mumbai" },
+  { q: "Indian currency symbol?", options: ["₹", "$", "€", "¥"], a: "₹" },
+  { q: "River through Varanasi?", options: ["Ganga", "Yamuna", "Godavari", "Narmada"], a: "Ganga" },
+  { q: "Most IPL titles team?", options: ["Mumbai Indians", "CSK", "KKR", "RCB"], a: "Mumbai Indians" },
+  { q: "Who is called Master Blaster?", options: ["Tendulkar", "Kohli", "Dhoni", "Dravid"], a: "Tendulkar" },
+  { q: "India's southern tip?", options: ["Kanyakumari", "Rameswaram", "Kochi", "Goa"], a: "Kanyakumari" },
+  { q: "Primary language in Pakistan?", options: ["Urdu", "Punjabi", "Hindi", "Bengali"], a: "Urdu" },
+  { q: "Capital of Bangladesh?", options: ["Dhaka", "Chittagong", "Sylhet", "Khulna"], a: "Dhaka" },
+  { q: "Dish: rice and lentils?", options: ["Khichdi", "Biryani", "Pulao", "Idli"], a: "Khichdi" },
+  { q: "Festival of lights in India?", options: ["Diwali", "Holi", "Eid", "Onam"], a: "Diwali" },
+  { q: "Taj Mahal city?", options: ["Agra", "Jaipur", "Lucknow", "Delhi"], a: "Agra" },
+  { q: "India's space agency?", options: ["ISRO", "DRDO", "NASA", "JAXA"], a: "ISRO" },
+  { q: "Who composed Jana Gana Mana?", options: ["Tagore", "Nehru", "Gandhi", "Bose"], a: "Tagore" },
+  { q: "Capital of Nepal?", options: ["Kathmandu", "Pokhara", "Lalitpur", "Biratnagar"], a: "Kathmandu" },
+  { q: "Indian state famous for tea?", options: ["Assam", "Punjab", "Goa", "Gujarat"], a: "Assam" },
+  { q: "Who was first PM India?", options: ["Nehru", "Patel", "Indira", "Shastri"], a: "Nehru" },
+  { q: "Samosa filling usually?", options: ["Potato", "Paneer", "Chicken", "Fish"], a: "Potato" },
+  { q: "Which city is Pink City?", options: ["Jaipur", "Jodhpur", "Udaipur", "Bikaner"], a: "Jaipur" },
+  { q: "Most FIFA World Cups?", options: ["Brazil", "Germany", "Italy", "Argentina"], a: "Brazil" },
+  { q: "NBA legend called King?", options: ["LeBron", "Jordan", "Kobe", "Curry"], a: "LeBron" },
+  { q: "Olympics held every?", options: ["4 years", "2 years", "3 years", "5 years"], a: "4 years" },
+  { q: "Tennis surface at Wimbledon?", options: ["Grass", "Clay", "Hard", "Carpet"], a: "Grass" },
+  { q: "Sport with touchdown?", options: ["American football", "Rugby", "Basketball", "Baseball"], a: "American football" },
+  { q: "Michael Phelps sport?", options: ["Swimming", "Running", "Cycling", "Rowing"], a: "Swimming" },
+  { q: "Formula 1 uses?", options: ["Open-wheel cars", "Bikes", "Rally cars", "Karts"], a: "Open-wheel cars" },
+  { q: "Cricket has how many stumps?", options: ["3", "2", "4", "5"], a: "3" },
+  { q: "NHL is which sport?", options: ["Ice hockey", "Basketball", "Baseball", "Soccer"], a: "Ice hockey" },
+  { q: "Usain Bolt event?", options: ["Sprinting", "Marathon", "Long jump", "Hurdles"], a: "Sprinting" },
+  { q: "Super Bowl is which sport?", options: ["American football", "Basketball", "Baseball", "Rugby"], a: "American football" },
+  { q: "Badminton uses?", options: ["Shuttlecock", "Ball", "Puck", "Disc"], a: "Shuttlecock" },
+  { q: "Highest score in tennis?", options: ["40", "30", "50", "45"], a: "40" },
+  { q: "Tour de France is?", options: ["Cycling race", "Marathon", "Ski event", "Car race"], a: "Cycling race" },
+  { q: "Table tennis ball color?", options: ["White", "Blue", "Green", "Black"], a: "White" },
+  { q: "Olympic symbol has colors?", options: ["5", "4", "6", "7"], a: "5" },
+  { q: "Wrestling ring shape usually?", options: ["Square", "Circle", "Triangle", "Oval"], a: "Square" },
+  { q: "Chess world champion 2024?", options: ["Ding Liren", "Carlsen", "Nepo", "Anand"], a: "Ding Liren" },
+  { q: "UEFA Champions League sport?", options: ["Football", "Cricket", "Hockey", "Basketball"], a: "Football" },
+  { q: "Davis Cup is?", options: ["Tennis", "Golf", "Rugby", "Volleyball"], a: "Tennis" },
+  { q: "Iron Man is from?", options: ["Marvel", "DC", "Image", "Dark Horse"], a: "Marvel" },
+  { q: "Hogwarts appears in?", options: ["Harry Potter", "Narnia", "Twilight", "Avatar"], a: "Harry Potter" },
+  { q: "Who is Batman's city?", options: ["Gotham", "Metropolis", "Star City", "Central City"], a: "Gotham" },
+  { q: "Elsa is from?", options: ["Frozen", "Moana", "Tangled", "Brave"], a: "Frozen" },
+  { q: "Avatar director?", options: ["James Cameron", "Spielberg", "Nolan", "Scorsese"], a: "James Cameron" },
+  { q: "Singer of Thriller?", options: ["Michael Jackson", "Prince", "Madonna", "Elvis"], a: "Michael Jackson" },
+  { q: "One Piece genre?", options: ["Anime", "Sitcom", "Documentary", "Soap"], a: "Anime" },
+  { q: "Movie with Joker 2019?", options: ["Joker", "Batman", "Suicide Squad", "Watchmen"], a: "Joker" },
+  { q: "Who plays Jack Sparrow?", options: ["Johnny Depp", "Brad Pitt", "Tom Cruise", "Will Smith"], a: "Johnny Depp" },
+  { q: "Streaming giant with N logo?", options: ["Netflix", "Hulu", "Prime", "Disney+"], a: "Netflix" },
+  { q: "Wakanda belongs to?", options: ["Black Panther", "Iron Man", "Thor", "Hulk"], a: "Black Panther" },
+  { q: "The Beatles were from?", options: ["Liverpool", "London", "Manchester", "Dublin"], a: "Liverpool" },
+  { q: "Taylor Swift album 2024?", options: ["Tortured Poets", "Midnights", "Lover", "Reputation"], a: "Tortured Poets" },
+  { q: "Blue alien movie 2009?", options: ["Avatar", "Dune", "Interstellar", "Prometheus"], a: "Avatar" },
+  { q: "Who says 'I am Groot'?", options: ["Groot", "Rocket", "Drax", "Gamora"], a: "Groot" },
+  { q: "Sonic is what animal?", options: ["Hedgehog", "Fox", "Cat", "Rabbit"], a: "Hedgehog" },
+  { q: "K-pop group BTS from?", options: ["South Korea", "Japan", "China", "Thailand"], a: "South Korea" },
+  { q: "Sherlock Holmes creator?", options: ["Conan Doyle", "Agatha Christie", "Rowling", "Tolkien"], a: "Conan Doyle" },
+  { q: "Pixar lamp mascot?", options: ["Luxo", "Nemo", "Woody", "Buzz"], a: "Luxo" },
+  { q: "Mario's brother?", options: ["Luigi", "Wario", "Yoshi", "Toad"], a: "Luigi" },
+  { q: "First country on Moon?", options: ["USA", "USSR", "China", "France"], a: "USA" },
+  { q: "What does CPU stand for?", options: ["Central Processing Unit", "Computer Power Unit", "Core Program Utility", "Control Process User"], a: "Central Processing Unit" },
+  { q: "Most used phone OS?", options: ["Android", "iOS", "Windows", "Linux"], a: "Android" },
+  { q: "Binary uses digits?", options: ["0 and 1", "1 and 2", "0 to 9", "A and B"], a: "0 and 1" },
+  { q: "Web pages use language?", options: ["HTML", "SQL", "C", "Swift"], a: "HTML" },
+  { q: "AI stands for?", options: ["Artificial Intelligence", "Automated Internet", "Adaptive Interface", "Auto Input"], a: "Artificial Intelligence" },
+  { q: "Storage measured in?", options: ["Bytes", "Meters", "Watts", "Liters"], a: "Bytes" },
+  { q: "Search engine by Google?", options: ["Google Search", "Bing", "DuckDuckGo", "Yahoo"], a: "Google Search" },
+  { q: "Cloud means data on?", options: ["Remote servers", "USB drives", "CD disks", "SIM cards"], a: "Remote servers" },
+  { q: "USB-C is a?", options: ["Connector", "Battery", "Screen", "App"], a: "Connector" },
+  { q: "Programming language by Guido?", options: ["Python", "Java", "C#", "Ruby"], a: "Python" },
+  { q: "HTTP is for?", options: ["Web transfer", "Audio files", "Video games", "Printing"], a: "Web transfer" },
+  { q: "5G relates to?", options: ["Mobile network", "Graphics card", "Game genre", "Storage"], a: "Mobile network" },
+  { q: "QR code stores?", options: ["Data", "Electricity", "Heat", "Sound"], a: "Data" },
+  { q: "App store for iPhone?", options: ["App Store", "Play Store", "Galaxy Store", "Aptoide"], a: "App Store" },
+  { q: "GPU handles mostly?", options: ["Graphics", "Emails", "Typing", "Networking"], a: "Graphics" },
+  { q: "Who discovered America 1492?", options: ["Columbus", "Magellan", "Cook", "Vespucci"], a: "Columbus" },
+  { q: "World War II ended in?", options: ["1945", "1944", "1946", "1939"], a: "1945" },
+  { q: "Pyramids are in?", options: ["Egypt", "Mexico", "India", "Peru"], a: "Egypt" },
+  { q: "Roman numeral for 50?", options: ["L", "X", "V", "C"], a: "L" },
+  { q: "Great Wall is in?", options: ["China", "Japan", "Mongolia", "Korea"], a: "China" },
+  { q: "Liberty statue city?", options: ["New York", "Boston", "Chicago", "LA"], a: "New York" },
+  { q: "Largest country area?", options: ["Russia", "Canada", "China", "USA"], a: "Russia" },
+  { q: "Suez Canal connects?", options: ["Mediterranean-Red Sea", "Atlantic-Pacific", "Black-Caspian", "Arctic-Atlantic"], a: "Mediterranean-Red Sea" },
+  { q: "Where is Machu Picchu?", options: ["Peru", "Chile", "Bolivia", "Ecuador"], a: "Peru" },
+  { q: "Berlin Wall fell in?", options: ["1989", "1991", "1985", "1979"], a: "1989" },
+  { q: "Country with Eiffel Tower?", options: ["France", "Italy", "Spain", "Belgium"], a: "France" },
+  { q: "Ancient Olympics birthplace?", options: ["Olympia", "Athens", "Sparta", "Rome"], a: "Olympia" },
+  { q: "Who was Cleopatra?", options: ["Egyptian queen", "Roman empress", "Greek poet", "Persian ruler"], a: "Egyptian queen" },
+  { q: "Time zone UTC starts at?", options: ["Greenwich", "Paris", "New York", "Tokyo"], a: "Greenwich" },
+  { q: "Continent with Amazon rainforest?", options: ["South America", "Africa", "Asia", "Europe"], a: "South America" },
 ];
 
-// ─────────────────────────────────────────────
-//  4. ODD ONE OUT  (50 sets)
-//     Find the item that doesn't belong
-// ─────────────────────────────────────────────
-
-export type OddOneOutQuestion = { items: string[]; odd: string };
-
-const ODD_ONE_OUT_RAW: Array<{ group: string[]; odd: string }> = [
-  { group: ["Apple", "Banana", "Orange"], odd: "Car" },
-  { group: ["Blue", "Green", "Red"], odd: "Table" },
-  { group: ["Cat", "Dog", "Bird"], odd: "Rock" },
-  { group: ["Circle", "Square", "Triangle"], odd: "Spoon" },
-  { group: ["Rose", "Tulip", "Daisy"], odd: "Truck" },
-  { group: ["Piano", "Guitar", "Drum"], odd: "Carpet" },
-  { group: ["Milk", "Water", "Juice"], odd: "Hammer" },
-  { group: ["Winter", "Spring", "Summer"], odd: "Helmet" },
-  { group: ["Monday", "Tuesday", "Wednesday"], odd: "Apple" },
-  { group: ["Gold", "Silver", "Bronze"], odd: "Lemon" },
-  { group: ["Tiger", "Lion", "Leopard"], odd: "Pencil" },
-  { group: ["Mango", "Pineapple", "Papaya"], odd: "Brick" },
-  { group: ["Train", "Bus", "Car"], odd: "Mountain" },
-  { group: ["Doctor", "Nurse", "Surgeon"], odd: "River" },
-  { group: ["Shirt", "Pants", "Jacket"], odd: "Cloud" },
-  { group: ["Hammer", "Screwdriver", "Wrench"], odd: "Pillow" },
-  { group: ["Mars", "Venus", "Jupiter"], odd: "Ocean" },
-  { group: ["Violin", "Cello", "Viola"], odd: "Chair" },
-  { group: ["Wheat", "Rice", "Barley"], odd: "Candle" },
-  { group: ["Eagle", "Hawk", "Falcon"], odd: "Laptop" },
-  { group: ["Salmon", "Tuna", "Trout"], odd: "Glove" },
-  { group: ["French", "Spanish", "Italian"], odd: "Copper" },
-  { group: ["Carrot", "Potato", "Onion"], odd: "Mirror" },
-  { group: ["Cricket", "Football", "Tennis"], odd: "Pillow" },
-  { group: ["Iron", "Steel", "Copper"], odd: "Banana" },
-  { group: ["Earth", "Mars", "Venus"], odd: "Sofa" },
-  { group: ["Socks", "Shoes", "Boots"], odd: "River" },
-  { group: ["Honey", "Jam", "Syrup"], odd: "Wrench" },
-  { group: ["Sparrow", "Pigeon", "Robin"], odd: "Table" },
-  { group: ["Coffee", "Tea", "Cocoa"], odd: "Brick" },
-  { group: ["Cheetah", "Panther", "Jaguar"], odd: "Bottle" },
-  { group: ["Square", "Rectangle", "Rhombus"], odd: "Spoon" },
-  { group: ["Oak", "Maple", "Pine"], odd: "Ruler" },
-  { group: ["Cotton", "Silk", "Wool"], odd: "Candle" },
-  { group: ["Hammer", "Nail", "Bolt"], odd: "Parrot" },
-  { group: ["Cup", "Mug", "Glass"], odd: "Stone" },
-  { group: ["Africa", "Europe", "Asia"], odd: "Clock" },
-  { group: ["Plumber", "Electrician", "Carpenter"], odd: "Grape" },
-  { group: ["Broccoli", "Spinach", "Lettuce"], odd: "Drum" },
-  { group: ["Swimming", "Cycling", "Running"], odd: "Brick" },
-  { group: ["Nose", "Eye", "Ear"], odd: "Bucket" },
-  { group: ["January", "March", "May"], odd: "Helmet" },
-  { group: ["Flute", "Trumpet", "Saxophone"], odd: "Chair" },
-  { group: ["Sand", "Clay", "Mud"], odd: "Candle" },
-  { group: ["Knife", "Fork", "Spoon"], odd: "Laptop" },
-  { group: ["Parrot", "Peacock", "Flamingo"], odd: "Stone" },
-  { group: ["Hydrogen", "Helium", "Oxygen"], odd: "Chair" },
-  { group: ["Cucumber", "Zucchini", "Celery"], odd: "Piano" },
-  { group: ["Wallet", "Purse", "Handbag"], odd: "Volcano" },
-  { group: ["Laptop", "Tablet", "Phone"], odd: "Cabbage" },
+const TRUE_FALSE_FACTS: TrueFalseQuestion[] = [
+  { statement: "Honey never expires.", answer: true },
+  { statement: "Bats are blind.", answer: false },
+  { statement: "The Great Wall is visible from Moon.", answer: false },
+  { statement: "A group of flamingos is flamboyance.", answer: true },
+  { statement: "Humans have five senses only.", answer: false },
+  { statement: "Lightning is hotter than Sun surface.", answer: true },
+  { statement: "Bananas grow on trees.", answer: false },
+  { statement: "Octopus has three hearts.", answer: true },
+  { statement: "Sharks are mammals.", answer: false },
+  { statement: "Tomatoes are botanically fruits.", answer: true },
+  { statement: "Sound travels faster than light.", answer: false },
+  { statement: "Venus rotates opposite most planets.", answer: true },
+  { statement: "Goldfish memory lasts three seconds.", answer: false },
+  { statement: "Water expands when freezing.", answer: true },
+  { statement: "The Sun is a planet.", answer: false },
+  { statement: "Koalas are bears.", answer: false },
+  { statement: "Polar bears have black skin.", answer: true },
+  { statement: "Mount Everest keeps growing slightly.", answer: true },
+  { statement: "Humans can breathe in space unaided.", answer: false },
+  { statement: "An ostrich can fly briefly.", answer: false },
+  { statement: "Jellyfish have no brain.", answer: true },
+  { statement: "Camels store water in humps.", answer: false },
+  { statement: "Earth has one natural moon.", answer: true },
+  { statement: "Pluto is still a major planet.", answer: false },
+  { statement: "Vatican City is a country.", answer: true },
+  { statement: "Coffee is made from berries.", answer: true },
+  { statement: "Mammals lay eggs rarely.", answer: true },
+  { statement: "Penguins live only at North Pole.", answer: false },
+  { statement: "The Pacific is smallest ocean.", answer: false },
+  { statement: "Lightning never strikes same place twice.", answer: false },
 ];
 
-export const ODD_ONE_OUT_BANK: OddOneOutQuestion[] = ODD_ONE_OUT_RAW.map((entry, index) => {
-  const rand = seededRandom(`odd-${index}`);
-  const items = shuffle([...entry.group, entry.odd], rand);
-  return { items, odd: entry.odd };
-});
-
-// ─────────────────────────────────────────────
-//  5. NUMBER SEQUENCE  (50 sequences)
-//     What is the next number in the pattern?
-// ─────────────────────────────────────────────
-
-export type SequenceQuestion = { sequence: number[]; answer: number };
-
-export const NUMBER_SEQUENCE_BANK: SequenceQuestion[] = [
-  { sequence: [2, 4, 6], answer: 8 },
-  { sequence: [3, 6, 9], answer: 12 },
-  { sequence: [5, 10, 15], answer: 20 },
-  { sequence: [1, 3, 5], answer: 7 },
-  { sequence: [10, 20, 30], answer: 40 },
-  { sequence: [4, 8, 12], answer: 16 },
-  { sequence: [7, 14, 21], answer: 28 },
-  { sequence: [2, 5, 8], answer: 11 },
-  { sequence: [3, 7, 11], answer: 15 },
-  { sequence: [1, 4, 9], answer: 16 },
-  { sequence: [2, 4, 8], answer: 16 },
-  { sequence: [5, 15, 45], answer: 135 },
-  { sequence: [100, 90, 80], answer: 70 },
-  { sequence: [50, 45, 40], answer: 35 },
-  { sequence: [1, 2, 4], answer: 8 },
-  { sequence: [3, 9, 27], answer: 81 },
-  { sequence: [6, 11, 16], answer: 21 },
-  { sequence: [8, 16, 24], answer: 32 },
-  { sequence: [4, 9, 14], answer: 19 },
-  { sequence: [12, 24, 36], answer: 48 },
-  { sequence: [20, 17, 14], answer: 11 },
-  { sequence: [1, 5, 9], answer: 13 },
-  { sequence: [2, 6, 10], answer: 14 },
-  { sequence: [9, 18, 27], answer: 36 },
-  { sequence: [15, 12, 9], answer: 6 },
-  { sequence: [4, 6, 8], answer: 10 },
-  { sequence: [7, 12, 17], answer: 22 },
-  { sequence: [10, 13, 16], answer: 19 },
-  { sequence: [3, 6, 12], answer: 24 },
-  { sequence: [25, 50, 75], answer: 100 },
-  { sequence: [11, 22, 33], answer: 44 },
-  { sequence: [2, 3, 5], answer: 8 },
-  { sequence: [1, 1, 2], answer: 3 },
-  { sequence: [5, 8, 11], answer: 14 },
-  { sequence: [6, 12, 18], answer: 24 },
-  { sequence: [8, 10, 12], answer: 14 },
-  { sequence: [30, 25, 20], answer: 15 },
-  { sequence: [4, 16, 64], answer: 256 },
-  { sequence: [0, 3, 6], answer: 9 },
-  { sequence: [9, 7, 5], answer: 3 },
-  { sequence: [5, 11, 17], answer: 23 },
-  { sequence: [2, 7, 12], answer: 17 },
-  { sequence: [10, 8, 6], answer: 4 },
-  { sequence: [1, 3, 7], answer: 15 },
-  { sequence: [6, 10, 14], answer: 18 },
-  { sequence: [4, 12, 36], answer: 108 },
-  { sequence: [3, 5, 7], answer: 9 },
-  { sequence: [8, 14, 20], answer: 26 },
-  { sequence: [5, 10, 20], answer: 40 },
-  { sequence: [9, 11, 13], answer: 15 },
+const TRUE_FALSE_MISCONCEPTIONS: TrueFalseQuestion[] = [
+  { statement: "Humans use only ten percent brain.", answer: false },
+  { statement: "Sugar makes kids hyperactive.", answer: false },
+  { statement: "Cracking knuckles causes arthritis.", answer: false },
+  { statement: "Bulls hate red color.", answer: false },
+  { statement: "Vikings wore horned helmets.", answer: false },
+  { statement: "Napoleon was very short.", answer: false },
+  { statement: "Glass is actually liquid.", answer: false },
+  { statement: "You lose most heat from head.", answer: false },
+  { statement: "Hair and nails grow after death.", answer: false },
+  { statement: "Chameleons match any background perfectly.", answer: false },
+  { statement: "Coriolis drains differ by hemisphere visibly.", answer: false },
+  { statement: "Deserts are always hot.", answer: false },
+  { statement: "Diamonds form from compressed coal.", answer: false },
+  { statement: "Bamboo is a grass.", answer: true },
+  { statement: "Humans and dinosaurs coexisted.", answer: false },
+  { statement: "Venus is closest planet to Earth always.", answer: false },
+  { statement: "The Moon has no gravity.", answer: false },
+  { statement: "Einstein failed school math.", answer: false },
+  { statement: "Pirates mostly buried treasure chests.", answer: false },
+  { statement: "Sydney is capital of Australia.", answer: false },
+  { statement: "Africa is a country.", answer: false },
+  { statement: "Pandas hibernate every winter.", answer: false },
+  { statement: "Human blood is blue in veins.", answer: false },
+  { statement: "Cambridge is UK capital.", answer: false },
+  { statement: "Mercury is hottest planet.", answer: false },
+  { statement: "Spiders are insects.", answer: false },
+  { statement: "Bacteria are always harmful.", answer: false },
+  { statement: "The tongue has separate taste zones.", answer: false },
+  { statement: "Mount Kilimanjaro is in Kenya.", answer: false },
+  { statement: "Lightning only strikes during rain.", answer: false },
 ];
 
-// ─────────────────────────────────────────────
-//  6. QUICK MATH  (50 problems)
-//     Solve: a × b − c
-// ─────────────────────────────────────────────
+function buildTrueFalseMath(): TrueFalseQuestion[] {
+  const rows: TrueFalseQuestion[] = [];
+  for (let i = 2; i <= 11; i++) {
+    const correct = i * 8;
+    rows.push({ statement: `${i} × 8 = ${correct}`, answer: true });
+    rows.push({ statement: `${i} × 8 = ${correct + 1}`, answer: false });
+    rows.push({ statement: `${i} × 7 = ${i * 7 - 1}`, answer: false });
+  }
+  return rows.slice(0, 30);
+}
 
-export type MathQuestion = { a: number; b: number; c: number; result: number };
-
-export const QUICK_MATH_BANK: MathQuestion[] = [
-  { a: 3, b: 4, c: 2, result: 10 },
-  { a: 5, b: 3, c: 4, result: 11 },
-  { a: 6, b: 2, c: 3, result: 9 },
-  { a: 4, b: 5, c: 6, result: 14 },
-  { a: 7, b: 3, c: 5, result: 16 },
-  { a: 8, b: 2, c: 4, result: 12 },
-  { a: 9, b: 3, c: 7, result: 20 },
-  { a: 5, b: 5, c: 5, result: 20 },
-  { a: 6, b: 4, c: 8, result: 16 },
-  { a: 3, b: 7, c: 6, result: 15 },
-  { a: 4, b: 6, c: 9, result: 15 },
-  { a: 7, b: 4, c: 8, result: 20 },
-  { a: 8, b: 3, c: 6, result: 18 },
-  { a: 5, b: 6, c: 7, result: 23 },
-  { a: 9, b: 2, c: 5, result: 13 },
-  { a: 6, b: 5, c: 8, result: 22 },
-  { a: 3, b: 8, c: 4, result: 20 },
-  { a: 7, b: 5, c: 9, result: 26 },
-  { a: 4, b: 7, c: 3, result: 25 },
-  { a: 8, b: 4, c: 7, result: 25 },
-  { a: 5, b: 7, c: 8, result: 27 },
-  { a: 9, b: 4, c: 6, result: 30 },
-  { a: 6, b: 6, c: 9, result: 27 },
-  { a: 3, b: 9, c: 5, result: 22 },
-  { a: 7, b: 6, c: 4, result: 38 },
-  { a: 4, b: 8, c: 6, result: 26 },
-  { a: 8, b: 5, c: 9, result: 31 },
-  { a: 5, b: 8, c: 7, result: 33 },
-  { a: 9, b: 5, c: 8, result: 37 },
-  { a: 6, b: 7, c: 5, result: 37 },
-  { a: 3, b: 6, c: 8, result: 10 },
-  { a: 7, b: 7, c: 9, result: 40 },
-  { a: 4, b: 9, c: 7, result: 29 },
-  { a: 8, b: 6, c: 4, result: 44 },
-  { a: 5, b: 9, c: 6, result: 39 },
-  { a: 9, b: 6, c: 7, result: 47 },
-  { a: 6, b: 8, c: 9, result: 39 },
-  { a: 3, b: 5, c: 4, result: 11 },
-  { a: 7, b: 8, c: 6, result: 50 },
-  { a: 4, b: 4, c: 5, result: 11 },
-  { a: 8, b: 7, c: 8, result: 48 },
-  { a: 5, b: 4, c: 9, result: 11 },
-  { a: 9, b: 7, c: 4, result: 59 },
-  { a: 6, b: 9, c: 8, result: 46 },
-  { a: 3, b: 3, c: 2, result: 7 },
-  { a: 7, b: 9, c: 5, result: 58 },
-  { a: 4, b: 3, c: 7, result: 5 },
-  { a: 8, b: 9, c: 6, result: 66 },
-  { a: 5, b: 2, c: 3, result: 7 },
-  { a: 9, b: 8, c: 9, result: 63 },
+const ODD_TEMPLATE: Array<{ group: [string, string, string]; odds: [string, string, string] }> = [
+  { group: ["Mercury", "Venus", "Earth"], odds: ["Pluto", "Neptune", "Mars"] },
+  { group: ["Monday", "March", "July"], odds: ["August", "Friday", "June"] },
+  { group: ["Iron", "Gold", "Copper"], odds: ["Steel", "Brass", "Bronze"] },
+  { group: ["Eagle", "Sparrow", "Pigeon"], odds: ["Bat", "Whale", "Rabbit"] },
+  { group: ["Shirt", "Pants", "Jacket"], odds: ["Apron", "Spoon", "Fork"] },
+  { group: ["Apple", "Banana", "Orange"], odds: ["Tomato", "Potato", "Carrot"] },
+  { group: ["Cat", "Dog", "Horse"], odds: ["Wolf", "Lion", "Lizard"] },
+  { group: ["Circle", "Square", "Triangle"], odds: ["Cube", "Rectangle", "Oval"] },
+  { group: ["Ruby", "Python", "Java"], odds: ["SQL", "HTML", "Cobalt"] },
+  { group: ["Copper", "Silver", "Gold"], odds: ["Bronze", "Brass", "Platinum"] },
+  { group: ["Dribble", "Pass", "Shoot"], odds: ["Serve", "Spike", "Dunk"] },
+  { group: ["Hydrogen", "Oxygen", "Nitrogen"], odds: ["Water", "Helium", "Carbon"] },
+  { group: ["Paris", "Rome", "Madrid"], odds: ["Berlin", "Sydney", "Lisbon"] },
+  { group: ["Pen", "Pencil", "Marker"], odds: ["Eraser", "Paper", "Keyboard"] },
+  { group: ["Rose", "Tulip", "Lily"], odds: ["Sunflower", "Oak", "Fern"] },
+  { group: ["Sine", "Cosine", "Tangent"], odds: ["Cotangent", "Logarithm", "Secant"] },
+  { group: ["Milk", "Cheese", "Yogurt"], odds: ["Butter", "Bread", "Cream"] },
+  { group: ["CPU", "GPU", "RAM"], odds: ["SSD", "Monitor", "Cache"] },
+  { group: ["Hindi", "Tamil", "Bengali"], odds: ["Urdu", "Punjabi", "Nepali"] },
+  { group: ["A", "E", "I"], odds: ["O", "U", "B"] },
+  { group: ["Saturn", "Jupiter", "Uranus"], odds: ["Neptune", "Venus", "Mars"] },
+  { group: ["Chess", "Checkers", "Go"], odds: ["Ludo", "Poker", "Carrom"] },
+  { group: ["January", "April", "August"], odds: ["December", "Monday", "October"] },
+  { group: ["Violin", "Cello", "Viola"], odds: ["Guitar", "Flute", "Harp"] },
+  { group: ["Triangle", "Pyramid", "Cone"], odds: ["Cylinder", "Circle", "Prism"] },
+  { group: ["Falcon", "Hawk", "Kite"], odds: ["Eagle", "Penguin", "Owl"] },
+  { group: ["Mercury", "Gold", "Silver"], odds: ["Aluminum", "Steel", "Lead"] },
+  { group: ["Dolphin", "Whale", "Seal"], odds: ["Shark", "Octopus", "Penguin"] },
+  { group: ["Google", "Bing", "DuckDuckGo"], odds: ["Firefox", "Yahoo", "Baidu"] },
+  { group: ["Spring", "Summer", "Autumn"], odds: ["Monsoon", "Winter", "Noon"] },
 ];
 
-// ─────────────────────────────────────────────
-//  7. OBJECT COUNT  (50 questions)
-//     Count the icons shown on screen
-// ─────────────────────────────────────────────
+function buildOddOneOutBank(): OddOneOutQuestion[] {
+  const out: OddOneOutQuestion[] = [];
+  ODD_TEMPLATE.forEach((tpl, i) => {
+    tpl.odds.forEach((odd, j) => {
+      const items = shuffle([tpl.group[0], tpl.group[1], tpl.group[2], odd], seededRandom(`odd-${i}-${j}`));
+      out.push({ items: toTuple4(items), odd });
+    });
+  });
+  return out;
+}
 
-export type CountQuestion = { count: number; icon: string };
+function buildNumberSequenceBank(): NumberSequenceQuestion[] {
+  const out: NumberSequenceQuestion[] = [];
+  for (let step = 2; step <= 15; step++) {
+    for (let start = 1; start <= 3; start++) {
+      out.push({
+        sequence: [start, start + step, start + step * 2],
+        answer: start + step * 3,
+      });
+    }
+  }
+  for (const mul of [2, 3]) {
+    for (let start = 1; start <= 12; start++) {
+      out.push({
+        sequence: [start, start * mul, start * mul * mul],
+        answer: start * mul * mul * mul,
+      });
+    }
+  }
+  for (let n = 1; n <= 15; n++) {
+    out.push({ sequence: [n * n, (n + 1) * (n + 1), (n + 2) * (n + 2)], answer: (n + 3) * (n + 3) });
+  }
+  for (let i = 1; i <= 20; i++) {
+    out.push({ sequence: [i, i + 2, i + 5], answer: i + 9 });
+  }
+  for (let start = 40; start >= 18; start -= 2) {
+    out.push({ sequence: [start, start - 3, start - 6], answer: start - 9 });
+  }
+  const fibs = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+  for (let i = 0; i < fibs.length - 3; i++) {
+    out.push({ sequence: [fibs[i], fibs[i + 1], fibs[i + 2]], answer: fibs[i + 3] });
+  }
+  return [...out, ...out].slice(0, 140);
+}
 
-export const OBJECT_COUNT_BANK: CountQuestion[] = [
-  { count: 4, icon: "🔶" }, { count: 7, icon: "🔷" }, { count: 5, icon: "🔺" },
-  { count: 9, icon: "🔻" }, { count: 6, icon: "🟢" }, { count: 11, icon: "🔶" },
-  { count: 8, icon: "🔷" }, { count: 3, icon: "🔺" }, { count: 12, icon: "🔻" },
-  { count: 10, icon: "🟢" }, { count: 5, icon: "🔶" }, { count: 8, icon: "🔺" },
-  { count: 6, icon: "🟢" }, { count: 9, icon: "🔷" }, { count: 7, icon: "🔻" },
-  { count: 4, icon: "🔺" }, { count: 11, icon: "🔷" }, { count: 3, icon: "🟢" },
-  { count: 10, icon: "🔶" }, { count: 12, icon: "🔺" }, { count: 6, icon: "🔷" },
-  { count: 8, icon: "🟢" }, { count: 5, icon: "🔻" }, { count: 9, icon: "🔶" },
-  { count: 7, icon: "🔺" }, { count: 4, icon: "🔷" }, { count: 11, icon: "🟢" },
-  { count: 3, icon: "🔻" }, { count: 12, icon: "🔷" }, { count: 10, icon: "🔺" },
-  { count: 6, icon: "🔶" }, { count: 5, icon: "🟢" }, { count: 8, icon: "🔻" },
-  { count: 7, icon: "🔷" }, { count: 9, icon: "🔶" }, { count: 4, icon: "🟢" },
-  { count: 11, icon: "🔺" }, { count: 3, icon: "🔶" }, { count: 12, icon: "🟢" },
-  { count: 10, icon: "🔻" }, { count: 6, icon: "🔺" }, { count: 5, icon: "🔶" },
-  { count: 8, icon: "🔷" }, { count: 7, icon: "🟢" }, { count: 9, icon: "🔻" },
-  { count: 4, icon: "🔶" }, { count: 11, icon: "🔻" }, { count: 3, icon: "🔷" },
-  { count: 12, icon: "🔶" }, { count: 10, icon: "🟢" },
+function buildQuickMathBank(): QuickMathQuestion[] {
+  const out: QuickMathQuestion[] = [];
+  const makeOptions = (answer: number, a: number, b: number): [number, number, number, number] => {
+    const values = uniqueNumbers(
+      [answer, answer + 1, answer - 1, answer + a, answer - b, a * b, a + b, Math.abs(a - b)],
+      `qm-${answer}-${a}-${b}`,
+    );
+    return toTuple4(shuffle([...values], seededRandom(`qm-opt-${answer}-${a}-${b}`)));
+  };
+
+  for (let a = 5; a <= 24; a++) {
+    const b = (a % 9) + 3;
+    const answer = a + b;
+    out.push({ display: `${a} + ${b} = ?`, answer, options: makeOptions(answer, a, b) });
+  }
+  for (let a = 2; a <= 12; a++) {
+    for (let b = 2; b <= 9; b += 2) {
+      const answer = a * b;
+      out.push({ display: `${a} × ${b} = ?`, answer, options: makeOptions(answer, a, b) });
+    }
+  }
+  for (let a = 3; a <= 11; a++) {
+    const b = (a % 7) + 2;
+    const c = (a % 5) + 1;
+    const answer = a * b - c;
+    out.push({ display: `${a} × ${b} − ${c} = ?`, answer, options: makeOptions(answer, a, b) });
+  }
+  for (let a = 2; a <= 12; a++) {
+    const answer = a * a;
+    out.push({ display: `${a}² = ?`, answer, options: makeOptions(answer, a, a) });
+  }
+  for (let a = 3; a <= 17; a++) {
+    const b = (a % 6) + 2;
+    const c = (a % 5) + 3;
+    const answer = a + b + c;
+    out.push({ display: `${a} + ${b} + ${c} = ?`, answer, options: makeOptions(answer, a, b) });
+  }
+  return [...out, ...out].slice(0, 140);
+}
+
+const EMOJI_POOL = ["🔶", "🔷", "🔺", "🔻", "🟢", "🟡", "🟠", "🔴", "🟣", "🔵"] as const;
+
+function buildObjectCountBank(): ObjectCountQuestion[] {
+  const out: ObjectCountQuestion[] = [];
+  for (let i = 0; i < 140; i++) {
+    const rand = seededRandom(`obj-${i}`);
+    const target = EMOJI_POOL[Math.floor(rand() * EMOJI_POOL.length)];
+    const tier = i % 3;
+    const count = tier === 0 ? 3 + Math.floor(rand() * 5) : tier === 1 ? 8 + Math.floor(rand() * 7) : 15 + Math.floor(rand() * 6);
+    const filler = 6 + Math.floor(rand() * 8);
+    const grid: string[] = Array.from({ length: count }).map(() => target);
+    for (let j = 0; j < filler; j++) {
+      const choices = EMOJI_POOL.filter((e) => e !== target);
+      grid.push(choices[Math.floor(rand() * choices.length)]);
+    }
+    out.push({ target, count, grid: shuffle(grid, rand) });
+  }
+  return out;
+}
+
+const WORD_SOURCE = [
+  "planet", "mission", "galaxy", "rocket", "puzzle", "meteor", "signal", "comet",
+  "nebula", "orbit", "launch", "module", "riddle", "cipher", "solver", "fusion",
+  "matrix", "sensor", "compass", "vector", "target", "oxygen", "cosmic", "engine",
+  "memory", "laser", "terrain", "airlock", "payload", "landing", "gravity", "control",
+  "pilot", "binary", "circuit", "trivia", "radar", "horizon", "station", "journey",
+  "quantum", "cosmos", "orbiter", "capsule", "thruster", "docking", "beacon", "stellar",
+  "eclipse", "bridge", "garden", "window", "flower", "school", "castle", "silver",
+  "monkey", "pencil", "jungle", "bucket", "candle", "pillow", "dragon", "mirror",
+  "rabbit", "sunset", "bottle", "carpet", "forest", "island", "kitten", "magnet",
+  "parrot", "valley", "walnut", "zipper", "anchor", "badger", "cactus", "donkey",
+  "falcon", "goblin", "harbor", "insect", "jigsaw", "marble", "noodle", "oyster",
+] as const;
+
+function scrambleWord(word: string, seed: string): string {
+  const chars = word.split("");
+  let scrambled = word;
+  let tries = 0;
+  while (scrambled === word && tries < 10) {
+    scrambled = shuffle(chars, seededRandom(`${seed}-${tries}`)).join("");
+    tries++;
+  }
+  return scrambled;
+}
+
+function makeWordDecoys(word: string, seed: string): [string, string, string] {
+  const sameLength = WORD_SOURCE.filter((w) => w.length === word.length && w !== word);
+  const rand = seededRandom(`decoy-${seed}-${word}`);
+  const picked = shuffle([...sameLength], rand).slice(0, 3);
+  while (picked.length < 3) {
+    const alphabet = "abcdefghijklmnopqrstuvwxyz";
+    const idx = Math.floor(rand() * word.length);
+    const letter = alphabet[Math.floor(rand() * alphabet.length)];
+    const mutated = `${word.slice(0, idx)}${letter}${word.slice(idx + 1)}`;
+    if (mutated !== word && !picked.includes(mutated)) picked.push(mutated);
+  }
+  return [picked[0], picked[1], picked[2]];
+}
+
+function buildWordScrambleBank(): WordScrambleQuestion[] {
+  const base = WORD_SOURCE.map((word, i) => {
+    const scrambled = scrambleWord(word, `scramble-${i}`);
+    const [d1, d2, d3] = makeWordDecoys(word, `scramble-${i}`);
+    const options = toTuple4(shuffle([word, d1, d2, d3], seededRandom(`scramble-opt-${i}`)));
+    return { word, scrambled, options };
+  });
+  return [...base, ...base].slice(0, 140);
+}
+
+function chooseBlankIndex(word: string): number {
+  const vowels = new Set(["a", "e", "i", "o", "u"]);
+  for (let i = 1; i < word.length - 1; i++) {
+    if (vowels.has(word[i])) return i;
+  }
+  return Math.min(Math.max(1, Math.floor(word.length / 2)), word.length - 2);
+}
+
+function buildMissingLetterBank(): MissingLetterQuestion[] {
+  const base = WORD_SOURCE.map((word, i) => {
+    const blankIndex = chooseBlankIndex(word);
+    const correct = word[blankIndex].toUpperCase();
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+    const rand = seededRandom(`miss-${i}-${word}`);
+    const wrongs: string[] = [];
+    while (wrongs.length < 3) {
+      const pick = alphabet[Math.floor(rand() * alphabet.length)];
+      if (pick !== correct && !wrongs.includes(pick)) wrongs.push(pick);
+    }
+    const options = toTuple4(shuffle([correct, wrongs[0], wrongs[1], wrongs[2]], rand));
+    return { word, blankIndex, options };
+  });
+  return [...base, ...base].slice(0, 140);
+}
+
+const ARRANGE_BASE: Array<[string, string, string]> = [
+  ["Seed", "Sprout", "Tree"], ["Bronze", "Silver", "Gold"], ["Cold", "Warm", "Hot"],
+  ["Tiny", "Small", "Large"], ["Dawn", "Noon", "Night"], ["Egg", "Larva", "Butterfly"],
+  ["Crawl", "Walk", "Run"], ["Child", "Teen", "Adult"], ["Low", "Medium", "High"],
+  ["Mercury", "Venus", "Earth"], ["Penny", "Nickel", "Dime"], ["Single", "Double", "Triple"],
+  ["Hydrogen", "Helium", "Lithium"], ["Solid", "Liquid", "Gas"], ["Drop", "Stream", "River"],
+  ["Page", "Chapter", "Book"], ["Minute", "Hour", "Day"], ["Day", "Week", "Month"],
+  ["Millimeter", "Centimeter", "Meter"], ["Gram", "Kilogram", "Ton"], ["Bud", "Flower", "Fruit"],
+  ["Draft", "Review", "Publish"], ["Stone", "Brick", "Wall"], ["Village", "Town", "City"],
+  ["Idea", "Plan", "Action"], ["Spark", "Flame", "Blaze"], ["Inhale", "Hold", "Exhale"],
+  ["Caterpillar", "Cocoon", "Butterfly"], ["Question", "Hint", "Answer"], ["Start", "Middle", "End"],
 ];
 
-// ─────────────────────────────────────────────
-//  8. WORD SCRAMBLE  (50 words)
-//     Unscramble the letters to form a real word
-// ─────────────────────────────────────────────
+function permute3(items: [string, string, string]): string[] {
+  const [a, b, c] = items;
+  return [
+    `${a} → ${b} → ${c}`,
+    `${a} → ${c} → ${b}`,
+    `${b} → ${a} → ${c}`,
+    `${b} → ${c} → ${a}`,
+    `${c} → ${a} → ${b}`,
+    `${c} → ${b} → ${a}`,
+  ];
+}
 
-export const WORD_SCRAMBLE_WORDS: string[] = [
-  "planet", "mission", "galaxy", "rocket", "puzzle",
-  "meteor", "signal", "comet", "nebula", "orbit",
-  "launch", "module", "riddle", "cipher", "solver",
-  "fusion", "matrix", "sensor", "compass", "vector",
-  "target", "oxygen", "cosmic", "cabin", "engine",
-  "memory", "laser", "terrain", "airlock", "payload",
-  "landing", "gravity", "control", "pilot", "binary",
-  "circuit", "trivia", "radar", "horizon", "station",
-  "journey", "quantum", "cosmos", "orbiter", "capsule",
-  "thruster", "docking", "beacon", "stellar", "eclipse",
-];
+function buildQuickArrangeBank(): QuickArrangeQuestion[] {
+  const out: QuickArrangeQuestion[] = [];
+  ARRANGE_BASE.forEach((items, i) => {
+    const all = permute3(items);
+    const correct = all[0];
+    for (let variant = 0; variant < 3; variant++) {
+      const rand = seededRandom(`arr-${i}-${variant}`);
+      const wrongChoices = shuffle(all.slice(1), rand).slice(0, 3);
+      const options = toTuple4(shuffle([correct, wrongChoices[0], wrongChoices[1], wrongChoices[2]], rand));
+      const shuffledText = all[Math.floor(rand() * 5) + 1].split(" → ") as [string, string, string];
+      out.push({ items, shuffled: shuffledText, options });
+    }
+  });
+  return [...out, ...out].slice(0, 140);
+}
 
-// ─────────────────────────────────────────────
-//  9. MISSING LETTER  (50 words)
-//     Fill in the missing letter to complete the word
-// ─────────────────────────────────────────────
-
-export const MISSING_LETTER_WORDS: string[] = [
-  "planet", "bridge", "garden", "window", "flower",
-  "school", "rocket", "castle", "silver", "monkey",
-  "pencil", "jungle", "bucket", "candle", "pillow",
-  "dragon", "mirror", "rabbit", "sunset", "bottle",
-  "carpet", "fabric", "forest", "island", "jungle",
-  "kitten", "locket", "magnet", "napkin", "oyster",
-  "parrot", "quartz", "rafter", "saddle", "timber",
-  "turban", "unfold", "valley", "walnut", "yarrow",
-  "zipper", "anchor", "badger", "cactus", "donkey",
-  "falcon", "goblin", "harbor", "insect", "jigsaw",
-];
-
-// ─────────────────────────────────────────────
-//  10. QUICK ARRANGE  (50 sets)
-//      Put 3 items in the correct order
-// ─────────────────────────────────────────────
-
-export type ArrangeQuestion = { items: [string, string, string]; answer: string };
-
-const QUICK_ARRANGE_SETS: Array<[string, string, string]> = [
-  ["Bronze", "Silver", "Gold"],
-  ["Seed", "Sprout", "Tree"],
-  ["Morning", "Noon", "Night"],
-  ["Small", "Medium", "Large"],
-  ["Baby", "Teen", "Adult"],
-  ["First", "Second", "Third"],
-  ["Winter", "Spring", "Summer"],
-  ["Monday", "Tuesday", "Wednesday"],
-  ["Low", "Medium", "High"],
-  ["Pebble", "Rock", "Boulder"],
-  ["Mercury", "Venus", "Earth"],
-  ["Earth", "Mars", "Jupiter"],
-  ["One", "Two", "Three"],
-  ["Copper", "Silver", "Gold"],
-  ["Start", "Middle", "End"],
-  ["Caterpillar", "Cocoon", "Butterfly"],
-  ["Cold", "Warm", "Hot"],
-  ["Quiet", "Loud", "Deafening"],
-  ["Dawn", "Noon", "Dusk"],
-  ["Solid", "Liquid", "Gas"],
-  ["Inhale", "Hold", "Exhale"],
-  ["North", "Center", "South"],
-  ["Walk", "Jog", "Run"],
-  ["Tiny", "Small", "Large"],
-  ["Leaf", "Flower", "Fruit"],
-  ["Drizzle", "Rain", "Storm"],
-  ["Kitten", "Cat", "Elder cat"],
-  ["Puppy", "Dog", "Old dog"],
-  ["Cub", "Lion", "Elder lion"],
-  ["Egg", "Chick", "Hen"],
-  ["Bud", "Bloom", "Wither"],
-  ["Worm", "Cocoon", "Butterfly"],
-  ["Second", "Minute", "Hour"],
-  ["Hour", "Day", "Week"],
-  ["Day", "Month", "Year"],
-  ["Millimeter", "Centimeter", "Meter"],
-  ["Gram", "Kilogram", "Ton"],
-  ["Milliliter", "Liter", "Gallon"],
-  ["Penny", "Dime", "Dollar"],
-  ["Inch", "Foot", "Yard"],
-  ["Sunrise", "Noon", "Sunset"],
-  ["New moon", "Half moon", "Full moon"],
-  ["Drip", "Stream", "Flood"],
-  ["Spark", "Flame", "Blaze"],
-  ["Whisper", "Talk", "Shout"],
-  ["Crawl", "Walk", "Fly"],
-  ["Tadpole", "Froglet", "Frog"],
-  ["Acorn", "Sapling", "Oak"],
-  ["Pup", "Wolf", "Pack leader"],
-  ["Stone", "Brick", "Castle"],
-];
-
-export const QUICK_ARRANGE_BANK: ArrangeQuestion[] = QUICK_ARRANGE_SETS.map((items) => ({
-  items,
-  answer: items.join(", "),
-}));
-
-// ─────────────────────────────────────────────
-//  GAME CONFIG REGISTRY
-// ─────────────────────────────────────────────
+export const RAPID_QUIZ_BANK: QuizQuestion[] = buildRapidQuizBank();
+export const FAST_TRIVIA_BANK: QuizQuestion[] = FAST_TRIVIA_RAW;
+export const TRUE_FALSE_BANK: TrueFalseQuestion[] = [...buildTrueFalseMath(), ...TRUE_FALSE_FACTS, ...TRUE_FALSE_MISCONCEPTIONS];
+export const ODD_ONE_OUT_BANK: OddOneOutQuestion[] = buildOddOneOutBank();
+export const NUMBER_SEQUENCE_BANK: NumberSequenceQuestion[] = buildNumberSequenceBank();
+export const QUICK_MATH_BANK: QuickMathQuestion[] = buildQuickMathBank();
+export const OBJECT_COUNT_BANK: ObjectCountQuestion[] = buildObjectCountBank();
+export const WORD_SCRAMBLE_BANK: WordScrambleQuestion[] = buildWordScrambleBank();
+export const MISSING_LETTER_BANK: MissingLetterQuestion[] = buildMissingLetterBank();
+export const QUICK_ARRANGE_BANK: QuickArrangeQuestion[] = buildQuickArrangeBank();
 
 export type GameConfig = {
   key: string;
@@ -562,54 +615,174 @@ export type GameConfig = {
 };
 
 export const GAME_CONFIGS: GameConfig[] = [
-  { key: "rapid-quiz",       title: "Rapid Quiz",       description: "Pick the correct answer from four options", questionCount: RAPID_QUIZ_BANK.length },
-  { key: "fast-trivia",      title: "Fast Trivia",      description: "One-tap multiple-choice trivia",            questionCount: FAST_TRIVIA_BANK.length },
-  { key: "true-false",       title: "True or False",    description: "Is the statement correct?",                 questionCount: TRUE_FALSE_BANK.length },
-  { key: "odd-one-out",      title: "Odd One Out",      description: "Find the item that doesn't belong",         questionCount: ODD_ONE_OUT_BANK.length },
-  { key: "number-sequence",  title: "Number Sequence",  description: "What is the next number in the pattern?",   questionCount: NUMBER_SEQUENCE_BANK.length },
-  { key: "quick-math",       title: "Quick Math",       description: "Solve a × b − c",                          questionCount: QUICK_MATH_BANK.length },
-  { key: "object-count",     title: "Object Count",     description: "Count the icons shown on screen",           questionCount: OBJECT_COUNT_BANK.length },
-  { key: "word-scramble",    title: "Word Scramble",    description: "Unscramble the letters",                    questionCount: WORD_SCRAMBLE_WORDS.length },
-  { key: "missing-letter",   title: "Missing Letter",   description: "Fill in the missing letter",                questionCount: MISSING_LETTER_WORDS.length },
-  { key: "quick-arrange",    title: "Quick Arrange",    description: "Put the 3 items in the correct order",      questionCount: QUICK_ARRANGE_BANK.length },
+  { key: "rapid-quiz", title: "Rapid Quiz", description: "Pick the correct answer — fast!", questionCount: RAPID_QUIZ_BANK.length },
+  { key: "fast-trivia", title: "Fast Trivia", description: "Quick-fire trivia — themed topics", questionCount: FAST_TRIVIA_BANK.length },
+  { key: "true-false", title: "True or False", description: "Fact or fiction — split-second judgement", questionCount: TRUE_FALSE_BANK.length },
+  { key: "odd-one-out", title: "Odd One Out", description: "Find the one that doesn't belong", questionCount: ODD_ONE_OUT_BANK.length },
+  { key: "number-sequence", title: "Number Sequence", description: "What comes next in the pattern?", questionCount: NUMBER_SEQUENCE_BANK.length },
+  { key: "quick-math", title: "Quick Math", description: "Solve the expression — tap fast", questionCount: QUICK_MATH_BANK.length },
+  { key: "object-count", title: "Emoji Cluster", description: "Count the right emojis in the cluster", questionCount: OBJECT_COUNT_BANK.length },
+  { key: "word-scramble", title: "Word Scramble", description: "Spot the scrambled word — tap the answer", questionCount: WORD_SCRAMBLE_BANK.length },
+  { key: "missing-letter", title: "Missing Letter", description: "Which letter completes the word?", questionCount: MISSING_LETTER_BANK.length },
+  { key: "quick-arrange", title: "Quick Arrange", description: "Tap the correct sequence order", questionCount: QUICK_ARRANGE_BANK.length },
 ];
 
 export function getMiniGameConfig(title: string | null): GameConfig | null {
-  const normalized = (title ?? "").toLowerCase();
-  return GAME_CONFIGS.find((c) => c.title.toLowerCase() === normalized) ?? null;
+  const normalized = (title ?? "").trim().toLowerCase();
+  if (!normalized) return null;
+  return GAME_CONFIGS.find((cfg) => cfg.title.toLowerCase() === normalized) ?? null;
 }
 
-function GameArt({ asset }: { asset: string }) {
+const GAME_ART_STYLES = `
+.gm-rapid-grid{display:grid;grid-template-columns:repeat(2,30px);gap:10px}
+.gm-rapid-cell{width:30px;height:30px;border:1px solid rgba(180,255,57,.4);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:800;color:#b4ff39}
+.gm-rapid-cell.d1,.gm-rapid-cell.d4{background:rgba(180,255,57,.18);animation:gm-pulse 1.4s ease-in-out infinite}
+.gm-rapid-cell.d2,.gm-rapid-cell.d3{background:#0a0a0a;animation:gm-pulse 1.4s ease-in-out infinite .4s}
+.gm-trivia-core{position:relative;width:88px;height:88px;display:flex;align-items:center;justify-content:center;animation:gm-spin-slow 8s linear infinite}
+.gm-trivia-lines{position:absolute;inset:8px;border:1px dashed rgba(180,255,57,.5);border-radius:50%}
+.gm-trivia-q{font-size:60px;line-height:1;color:#b4ff39;font-weight:900}
+.gm-tf-wrap{display:flex;width:220px;height:82px;border:1px solid rgba(66,74,53,.5)}
+.gm-tf-half{flex:1;display:flex;align-items:center;justify-content:center;font-family:var(--font-headline);font-size:40px;font-weight:900}
+.gm-tf-left{background:#0a0a0a;color:#b4ff39;border-right:1px solid #b4ff39}
+.gm-tf-right{background:#151515;color:var(--error)}
+.gm-tf-mid{position:absolute;width:2px;height:64px;background:#b4ff39;box-shadow:0 0 8px rgba(180,255,57,.8)}
+.gm-odd-wrap{display:flex;align-items:center;gap:18px}
+.gm-odd-cluster{display:flex;align-items:center}
+.gm-odd-circle{width:36px;height:36px;border-radius:50%;border:1px solid rgba(180,255,57,.8);background:rgba(180,255,57,.2);margin-left:-8px}
+.gm-odd-circle:first-child{margin-left:0}
+.gm-odd-out{width:36px;height:36px;border-radius:50%;border:1px solid var(--error);display:flex;align-items:center;justify-content:center;color:var(--error);font-size:18px;font-weight:900;animation:gm-pulse 1.2s ease-in-out infinite}
+.gm-seq-row{display:flex;align-items:center;gap:8px}
+.gm-seq-box{min-width:36px;height:40px;padding:0 6px;background:#0a0a0a;border-bottom:2px solid #b4ff39;color:#e5e2e1;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:20px;font-weight:700}
+.gm-seq-arrow{width:10px;height:2px;background:#b4ff39}
+.gm-seq-q{animation:gm-blink 1.1s ease-in-out infinite}
+.gm-math{font-family:var(--font-mono);font-size:34px;font-weight:800;color:#e5e2e1}
+.gm-math .eq{color:#b4ff39}
+.gm-math .cursor{display:inline-block;color:#b4ff39;animation:gm-blink 1s steps(1,end) infinite}
+`;
+
+const STYLE_ID = "mini-game-art-styles";
+function useInjectGameArtStyles() {
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = GAME_ART_STYLES;
+    document.head.appendChild(style);
+  }, []);
+}
+
+function useTapAnswer(disabled: boolean, onComplete: (result: MiniGameResult) => void, resetKey: string) {
+  const [chosen, setChosen] = useState<string | null>(null);
+  useEffect(() => setChosen(null), [resetKey]);
+
+  const submit = (value: string, correct: boolean) => {
+    if (disabled || chosen) return;
+    setChosen(value);
+    setTimeout(() => {
+      onComplete({ success: correct, details: correct ? "Correct" : "Wrong" });
+    }, 300);
+  };
+
+  return { chosen, submit };
+}
+
+function RapidQuizArt() {
   return (
-    <div className="game-art" style={{ backgroundImage: `url(/games/${asset}.png)` }}>
-      <span className="game-art-label">/public/games/{asset}.png</span>
+    <div className="game-art-panel">
+      <div className="gm-rapid-grid">
+        <div className="gm-rapid-cell d1">A</div>
+        <div className="gm-rapid-cell d2">B</div>
+        <div className="gm-rapid-cell d3">C</div>
+        <div className="gm-rapid-cell d4">D</div>
+      </div>
     </div>
   );
 }
 
-function RapidQuiz({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
+function FastTriviaArt() {
+  return (
+    <div className="game-art-panel">
+      <div className="gm-trivia-core">
+        <div className="gm-trivia-lines" />
+        <div className="gm-trivia-q">?</div>
+      </div>
+    </div>
+  );
+}
+
+function TrueFalseArt() {
+  return (
+    <div className="game-art-panel">
+      <div className="gm-tf-wrap">
+        <div className="gm-tf-half gm-tf-left">T</div>
+        <div className="gm-tf-half gm-tf-right">F</div>
+      </div>
+      <div className="gm-tf-mid" />
+    </div>
+  );
+}
+
+function OddOneOutArt() {
+  return (
+    <div className="game-art-panel">
+      <div className="gm-odd-wrap">
+        <div className="gm-odd-cluster">
+          <div className="gm-odd-circle" />
+          <div className="gm-odd-circle" />
+          <div className="gm-odd-circle" />
+        </div>
+        <div className="gm-odd-out">×</div>
+      </div>
+    </div>
+  );
+}
+
+function NumberSequenceArt() {
+  return (
+    <div className="game-art-panel">
+      <div className="gm-seq-row">
+        <div className="gm-seq-box">n</div>
+        <div className="gm-seq-arrow" />
+        <div className="gm-seq-box">n</div>
+        <div className="gm-seq-arrow" />
+        <div className="gm-seq-box">n</div>
+        <div className="gm-seq-arrow" />
+        <div className="gm-seq-box gm-seq-q">?</div>
+      </div>
+    </div>
+  );
+}
+
+function QuickMathArt() {
+  return (
+    <div className="game-art-panel">
+      <div className="gm-math">
+        a × b − c <span className="eq">=</span> ?<span className="cursor">|</span>
+      </div>
+    </div>
+  );
+}
+
+export function RapidQuiz({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
   const data = useMemo(
     () => pickFromBankIndexed(seed, "rapid", RAPID_QUIZ_BANK, questionIndex),
     [seed, questionIndex],
   );
+  const { chosen, submit } = useTapAnswer(disabled, onComplete, `${seed}-${questionIndex}`);
 
   return (
     <div className="game-panel">
-      <GameArt asset="rapid-quiz" />
+      <RapidQuizArt />
       <p className="game-question">{data.q}</p>
-      <div className="game-options">
+      <div className="game-options cols-2">
         {data.options.map((option) => (
           <button
             key={option}
             type="button"
-            className="game-option"
-            disabled={disabled}
-            onClick={() =>
-              onComplete({
-                success: option === data.a,
-                details: option === data.a ? "Quiz correct" : "Quiz wrong",
-              })
-            }
+            className={`game-option${chosen === option ? (option === data.a ? " correct" : " wrong") : ""}`}
+            disabled={disabled || !!chosen}
+            onClick={() => submit(option, option === data.a)}
           >
             {option}
           </button>
@@ -619,29 +792,25 @@ function RapidQuiz({ seed, questionIndex, disabled, onComplete }: MiniGameProps)
   );
 }
 
-function FastTrivia({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
+export function FastTrivia({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
   const data = useMemo(
     () => pickFromBankIndexed(seed, "trivia", FAST_TRIVIA_BANK, questionIndex),
     [seed, questionIndex],
   );
+  const { chosen, submit } = useTapAnswer(disabled, onComplete, `${seed}-${questionIndex}`);
 
   return (
     <div className="game-panel">
-      <GameArt asset="fast-trivia" />
+      <FastTriviaArt />
       <p className="game-question">{data.q}</p>
-      <div className="game-options">
+      <div className="game-options cols-2">
         {data.options.map((option) => (
           <button
             key={option}
             type="button"
-            className="game-option"
-            disabled={disabled}
-            onClick={() =>
-              onComplete({
-                success: option === data.a,
-                details: "Trivia",
-              })
-            }
+            className={`game-option${chosen === option ? (option === data.a ? " correct" : " wrong") : ""}`}
+            disabled={disabled || !!chosen}
+            onClick={() => submit(option, option === data.a)}
           >
             {option}
           </button>
@@ -651,61 +820,57 @@ function FastTrivia({ seed, questionIndex, disabled, onComplete }: MiniGameProps
   );
 }
 
-function TrueFalse({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
+export function TrueFalse({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
   const data = useMemo(
     () => pickFromBankIndexed(seed, "tf", TRUE_FALSE_BANK, questionIndex),
     [seed, questionIndex],
   );
+  const { chosen, submit } = useTapAnswer(disabled, onComplete, `${seed}-${questionIndex}`);
+  const opts = ["TRUE", "FALSE"] as const;
 
   return (
     <div className="game-panel">
-      <GameArt asset="true-false" />
-      <p className="game-question">{data.text}</p>
-      <div className="game-options">
-        {["True", "False"].map((option) => (
-          <button
-            key={option}
-            type="button"
-            className="game-option"
-            disabled={disabled}
-            onClick={() =>
-              onComplete({
-                success: (option === "True") === data.correct,
-                details: "True/False",
-              })
-            }
-          >
-            {option}
-          </button>
-        ))}
+      <TrueFalseArt />
+      <p className="game-question">{data.statement}</p>
+      <div className="game-options cols-1">
+        {opts.map((opt) => {
+          const isCorrect = (opt === "TRUE") === data.answer;
+          return (
+            <button
+              key={opt}
+              type="button"
+              className={`game-option${chosen === opt ? (isCorrect ? " correct" : " wrong") : ""}`}
+              disabled={disabled || !!chosen}
+              onClick={() => submit(opt, isCorrect)}
+            >
+              {opt}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function OddOneOut({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
+export function OddOneOut({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
   const data = useMemo(
     () => pickFromBankIndexed(seed, "odd", ODD_ONE_OUT_BANK, questionIndex),
     [seed, questionIndex],
   );
+  const { chosen, submit } = useTapAnswer(disabled, onComplete, `${seed}-${questionIndex}`);
 
   return (
     <div className="game-panel">
-      <GameArt asset="odd-one-out" />
-      <p className="game-question">Pick the odd one out.</p>
-      <div className="game-options">
+      <OddOneOutArt />
+      <p className="game-question">Which one does not belong?</p>
+      <div className="game-options cols-2">
         {data.items.map((item) => (
           <button
             key={item}
             type="button"
-            className="game-option"
-            disabled={disabled}
-            onClick={() =>
-              onComplete({
-                success: item === data.odd,
-                details: "Odd one out",
-              })
-            }
+            className={`game-option${chosen === item ? (item === data.odd ? " correct" : " wrong") : ""}`}
+            disabled={disabled || !!chosen}
+            onClick={() => submit(item, item === data.odd)}
           >
             {item}
           </button>
@@ -715,254 +880,33 @@ function OddOneOut({ seed, questionIndex, disabled, onComplete }: MiniGameProps)
   );
 }
 
-function NumberSequence({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
-  const [answer, setAnswer] = useState("");
+export function NumberSequence({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
   const data = useMemo(
-    () => pickFromBankIndexed(seed, "sequence", NUMBER_SEQUENCE_BANK, questionIndex),
+    () => pickFromBankIndexed(seed, "seq", NUMBER_SEQUENCE_BANK, questionIndex),
     [seed, questionIndex],
   );
-
-  return (
-    <div className="game-panel">
-      <GameArt asset="number-sequence" />
-      <p className="game-question">Next number: {data.sequence.join(", ")}, ?</p>
-      <div className="game-input-row">
-        <input
-          className="input-field"
-          value={answer}
-          onChange={(event) => setAnswer(event.target.value)}
-          placeholder="Your answer"
-          disabled={disabled}
-        />
-        <button
-          type="button"
-          className="button-primary"
-          disabled={disabled}
-          onClick={() => {
-            onComplete({
-              success: Number(answer) === data.answer,
-              details: "Sequence",
-            });
-            setAnswer("");
-          }}
-        >
-          Check
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function QuickMath({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
-  const [answer, setAnswer] = useState("");
-  const data = useMemo(
-    () => pickFromBankIndexed(seed, "math", QUICK_MATH_BANK, questionIndex),
-    [seed, questionIndex],
-  );
-
-  return (
-    <div className="game-panel">
-      <GameArt asset="quick-math" />
-      <p className="game-question">Solve: {data.a} x {data.b} - {data.c}</p>
-      <div className="game-input-row">
-        <input
-          className="input-field"
-          value={answer}
-          onChange={(event) => setAnswer(event.target.value)}
-          placeholder="Your answer"
-          disabled={disabled}
-        />
-        <button
-          type="button"
-          className="button-primary"
-          disabled={disabled}
-          onClick={() => {
-            onComplete({
-              success: Number(answer) === data.result,
-              details: "Math result",
-            });
-            setAnswer("");
-          }}
-        >
-          Check
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ObjectCount({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
-  const [answer, setAnswer] = useState("");
-  const data = useMemo(
-    () => pickFromBankIndexed(seed, "count", OBJECT_COUNT_BANK, questionIndex),
-    [seed, questionIndex],
-  );
-
-  return (
-    <div className="game-panel">
-      <GameArt asset="object-count" />
-      <div className="game-grid">
-        {Array.from({ length: data.count }).map((_, index) => (
-          <span key={index} className="game-icon">
-            {data.icon}
-          </span>
-        ))}
-      </div>
-      <div className="game-input-row">
-        <input
-          className="input-field"
-          value={answer}
-          onChange={(event) => setAnswer(event.target.value)}
-          placeholder="Count"
-          disabled={disabled}
-        />
-        <button
-          type="button"
-          className="button-primary"
-          disabled={disabled}
-          onClick={() => {
-            onComplete({
-              success: Number(answer) === data.count,
-              details: "Count",
-            });
-            setAnswer("");
-          }}
-        >
-          Check
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function WordScramble({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
-  const [answer, setAnswer] = useState("");
-  const data = useMemo(() => {
-    const rand = seededRandom(`${seed}-scramble-${questionIndex}`);
-    const word = pickFromBankIndexed(
-      seed,
-      "scramble",
-      WORD_SCRAMBLE_WORDS,
-      questionIndex,
-    );
-    const scrambled = shuffle(word.split(""), rand).join("");
-    return { word, scrambled };
-  }, [seed, questionIndex]);
-
-  return (
-    <div className="game-panel">
-      <GameArt asset="word-scramble" />
-      <p className="game-question">Unscramble: {data.scrambled}</p>
-      <div className="game-input-row">
-        <input
-          className="input-field"
-          value={answer}
-          onChange={(event) => setAnswer(event.target.value)}
-          placeholder="Your word"
-          disabled={disabled}
-        />
-        <button
-          type="button"
-          className="button-primary"
-          disabled={disabled}
-          onClick={() => {
-            onComplete({
-              success: answer.trim().toLowerCase() === data.word,
-              details: "Scramble",
-            });
-            setAnswer("");
-          }}
-        >
-          Check
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function MissingLetter({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
-  const [answer, setAnswer] = useState("");
-  const data = useMemo(() => {
-    const rand = seededRandom(`${seed}-missing-${questionIndex}`);
-    const word = pickFromBankIndexed(
-      seed,
-      "missing",
-      MISSING_LETTER_WORDS,
-      questionIndex,
-    );
-    const index = Math.floor(rand() * word.length);
-    const masked = word.slice(0, index) + "_" + word.slice(index + 1);
-    return { masked, letter: word[index] };
-  }, [seed, questionIndex]);
-
-  return (
-    <div className="game-panel">
-      <GameArt asset="missing-letter" />
-      <p className="game-question">Fill the missing letter: {data.masked}</p>
-      <div className="game-input-row">
-        <input
-          className="input-field"
-          value={answer}
-          onChange={(event) => setAnswer(event.target.value)}
-          placeholder="Letter"
-          disabled={disabled}
-        />
-        <button
-          type="button"
-          className="button-primary"
-          disabled={disabled}
-          onClick={() => {
-            onComplete({
-              success: answer.trim().toLowerCase() === data.letter,
-              details: "Missing letter",
-            });
-            setAnswer("");
-          }}
-        >
-          Check
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function QuickArrange({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
-  const data = useMemo(() => {
-    const rand = seededRandom(`${seed}-arrange-${questionIndex}`);
-    const pick = pickFromBankIndexed(
-      seed,
-      "arrange",
-      QUICK_ARRANGE_BANK,
-      questionIndex,
-    );
-    const options = shuffle(
-      [
-        pick.answer,
-        `${pick.items[1]}, ${pick.items[2]}, ${pick.items[0]}`,
-        `${pick.items[2]}, ${pick.items[0]}, ${pick.items[1]}`,
-      ],
+  const rand = seededRandom(`${seed}-seq-opt-${questionIndex}`);
+  const wrongPattern = data.sequence[2] + (data.sequence[2] - data.sequence[1]);
+  const options = toTuple4(
+    shuffle(
+      [...uniqueNumbers([data.answer, data.answer + 1, data.answer - 1, data.answer + 2, data.answer - 2, wrongPattern], `${seed}-seq-${questionIndex}`)],
       rand,
-    );
-    return { prompt: pick.items, options, answer: pick.answer };
-  }, [seed, questionIndex]);
+    ).slice(0, 4),
+  );
+  const { chosen, submit } = useTapAnswer(disabled, onComplete, `${seed}-${questionIndex}`);
 
   return (
     <div className="game-panel">
-      <GameArt asset="quick-arrange" />
-      <p className="game-question">Pick the correct order:</p>
-      <div className="game-options">
-        {data.options.map((option) => (
+      <NumberSequenceArt />
+      <p className="game-question">{`${data.sequence[0]}, ${data.sequence[1]}, ${data.sequence[2]}, ?`}</p>
+      <div className="game-options cols-2">
+        {options.map((option) => (
           <button
             key={option}
             type="button"
-            className="game-option"
-            disabled={disabled}
-            onClick={() =>
-              onComplete({
-                success: option === data.answer,
-                details: "Arrange",
-              })
-            }
+            className={`game-option${chosen === String(option) ? (option === data.answer ? " correct" : " wrong") : ""}`}
+            disabled={disabled || !!chosen}
+            onClick={() => submit(String(option), option === data.answer)}
           >
             {option}
           </button>
@@ -972,112 +916,220 @@ function QuickArrange({ seed, questionIndex, disabled, onComplete }: MiniGamePro
   );
 }
 
-export function MiniGameRenderer({
-  gameKey,
+export function QuickMath({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
+  const data = useMemo(
+    () => pickFromBankIndexed(seed, "math", QUICK_MATH_BANK, questionIndex),
+    [seed, questionIndex],
+  );
+  const { chosen, submit } = useTapAnswer(disabled, onComplete, `${seed}-${questionIndex}`);
+
+  return (
+    <div className="game-panel">
+      <QuickMathArt />
+      <p className="game-question">{data.display}</p>
+      <div className="game-options cols-2">
+        {data.options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`game-option${chosen === String(option) ? (option === data.answer ? " correct" : " wrong") : ""}`}
+            disabled={disabled || !!chosen}
+            onClick={() => submit(String(option), option === data.answer)}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ObjectCount({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
+  const data = useMemo(
+    () => pickFromBankIndexed(seed, "count", OBJECT_COUNT_BANK, questionIndex),
+    [seed, questionIndex],
+  );
+  const rand = seededRandom(`${seed}-cnt-${questionIndex}`);
+  const options = toTuple4(
+    shuffle(
+      [...uniqueNumbers([data.count, data.count - 1, data.count + 1, data.count - 2, data.count + 2, data.count + 3], `${seed}-cnt-opt-${questionIndex}`)],
+      rand,
+    ).slice(0, 4),
+  );
+  const { chosen, submit } = useTapAnswer(disabled, onComplete, `${seed}-${questionIndex}`);
+
+  return (
+    <div className="game-panel">
+      <div className="game-icon-grid" style={{ minHeight: 120 }}>
+        {data.grid.map((emoji, index) => (
+          <span
+            key={`${emoji}-${index}`}
+            className="game-icon"
+            style={{ transform: `rotate(${((index * 17) % 11) - 5}deg)` }}
+          >
+            {emoji}
+          </span>
+        ))}
+      </div>
+      <p className="game-question">How many {data.target} can you count?</p>
+      <div className="game-options cols-2">
+        {options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`game-option${chosen === String(option) ? (option === data.count ? " correct" : " wrong") : ""}`}
+            disabled={disabled || !!chosen}
+            onClick={() => submit(String(option), option === data.count)}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function WordScramble({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
+  const data = useMemo(
+    () => pickFromBankIndexed(seed, "scramble", WORD_SCRAMBLE_BANK, questionIndex),
+    [seed, questionIndex],
+  );
+  const { chosen, submit } = useTapAnswer(disabled, onComplete, `${seed}-${questionIndex}`);
+
+  return (
+    <div className="game-panel">
+      <div className="scramble-letters">
+        {data.scrambled.toUpperCase().split("").map((letter, index) => (
+          <span key={`${letter}-${index}`} className="scramble-letter">
+            {letter}
+          </span>
+        ))}
+      </div>
+      <p className="game-question">Pick the correct word.</p>
+      <div className="game-options cols-2">
+        {data.options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`game-option${chosen === option ? (option === data.word ? " correct" : " wrong") : ""}`}
+            disabled={disabled || !!chosen}
+            onClick={() => submit(option, option === data.word)}
+          >
+            {option.toUpperCase()}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function MissingLetter({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
+  const data = useMemo(
+    () => pickFromBankIndexed(seed, "missing", MISSING_LETTER_BANK, questionIndex),
+    [seed, questionIndex],
+  );
+  const { chosen, submit } = useTapAnswer(disabled, onComplete, `${seed}-${questionIndex}`);
+
+  return (
+    <div className="game-panel">
+      <div className="missing-word-display">
+        {data.word.toUpperCase().split("").map((letter, index) => (
+          <span key={`${letter}-${index}`} className={`letter-tile${index === data.blankIndex ? " blank" : ""}`}>
+            {index === data.blankIndex ? "?" : letter}
+          </span>
+        ))}
+      </div>
+      <p className="game-question">Which letter completes the word?</p>
+      <div className="game-options cols-4">
+        {data.options.map((option) => {
+          const correct = option === data.word[data.blankIndex].toUpperCase();
+          return (
+            <button
+              key={option}
+              type="button"
+              className={`game-option${chosen === option ? (correct ? " correct" : " wrong") : ""}`}
+              disabled={disabled || !!chosen}
+              onClick={() => submit(option, correct)}
+            >
+              {option}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function QuickArrange({ seed, questionIndex, disabled, onComplete }: MiniGameProps) {
+  const data = useMemo(
+    () => pickFromBankIndexed(seed, "arrange", QUICK_ARRANGE_BANK, questionIndex),
+    [seed, questionIndex],
+  );
+  const correct = `${data.items[0]} → ${data.items[1]} → ${data.items[2]}`;
+  const { chosen, submit } = useTapAnswer(disabled, onComplete, `${seed}-${questionIndex}`);
+
+  return (
+    <div className="game-panel">
+      <div className="arrange-items">
+        {data.shuffled.map((item) => (
+          <span key={item} className="arrange-chip">{item}</span>
+        ))}
+      </div>
+      <p className="game-question">Put these in order:</p>
+      <div className="game-options cols-1">
+        {data.options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`game-option${chosen === option ? (option === correct ? " correct" : " wrong") : ""}`}
+            disabled={disabled || !!chosen}
+            onClick={() => submit(option, option === correct)}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function MiniGame({
+  gameType,
   seed,
   questionIndex,
   disabled,
   onComplete,
-}: MiniGameProps & { gameKey: string }) {
-  switch (gameKey) {
-    case "rapid-quiz":
-      return (
-        <RapidQuiz
-          seed={seed}
-          questionIndex={questionIndex}
-          disabled={disabled}
-          onComplete={onComplete}
-        />
-      );
-    case "fast-trivia":
-      return (
-        <FastTrivia
-          seed={seed}
-          questionIndex={questionIndex}
-          disabled={disabled}
-          onComplete={onComplete}
-        />
-      );
-    case "true-false":
-      return (
-        <TrueFalse
-          seed={seed}
-          questionIndex={questionIndex}
-          disabled={disabled}
-          onComplete={onComplete}
-        />
-      );
-    case "odd-one-out":
-      return (
-        <OddOneOut
-          seed={seed}
-          questionIndex={questionIndex}
-          disabled={disabled}
-          onComplete={onComplete}
-        />
-      );
-    case "number-sequence":
-      return (
-        <NumberSequence
-          seed={seed}
-          questionIndex={questionIndex}
-          disabled={disabled}
-          onComplete={onComplete}
-        />
-      );
-    case "quick-math":
-      return (
-        <QuickMath
-          seed={seed}
-          questionIndex={questionIndex}
-          disabled={disabled}
-          onComplete={onComplete}
-        />
-      );
-    case "object-count":
-      return (
-        <ObjectCount
-          seed={seed}
-          questionIndex={questionIndex}
-          disabled={disabled}
-          onComplete={onComplete}
-        />
-      );
-    case "word-scramble":
-      return (
-        <WordScramble
-          seed={seed}
-          questionIndex={questionIndex}
-          disabled={disabled}
-          onComplete={onComplete}
-        />
-      );
-    case "missing-letter":
-      return (
-        <MissingLetter
-          seed={seed}
-          questionIndex={questionIndex}
-          disabled={disabled}
-          onComplete={onComplete}
-        />
-      );
-    case "quick-arrange":
-      return (
-        <QuickArrange
-          seed={seed}
-          questionIndex={questionIndex}
-          disabled={disabled}
-          onComplete={onComplete}
-        />
-      );
-    default:
-      return (
-        <RapidQuiz
-          seed={seed}
-          questionIndex={questionIndex}
-          disabled={disabled}
-          onComplete={onComplete}
-        />
-      );
+}: MiniGameProps & { gameType: string }) {
+  useInjectGameArtStyles();
+  switch (gameType) {
+    case "rapid-quiz": return <RapidQuiz seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
+    case "fast-trivia": return <FastTrivia seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
+    case "true-false": return <TrueFalse seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
+    case "odd-one-out": return <OddOneOut seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
+    case "number-sequence": return <NumberSequence seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
+    case "quick-math": return <QuickMath seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
+    case "object-count": return <ObjectCount seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
+    case "word-scramble": return <WordScramble seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
+    case "missing-letter": return <MissingLetter seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
+    case "quick-arrange": return <QuickArrange seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
+    default: return <RapidQuiz seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
   }
+}
+
+export function MiniGameRenderer({
+  gameKey,
+  seed,
+  questionIndex,
+  disabled = false,
+  onComplete,
+}: MiniGameProps & { gameKey: string }) {
+  return (
+    <MiniGame
+      gameType={gameKey}
+      seed={seed}
+      questionIndex={questionIndex}
+      disabled={disabled}
+      onComplete={onComplete}
+    />
+  );
 }

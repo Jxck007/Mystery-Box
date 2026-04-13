@@ -34,5 +34,11 @@ export async function POST(request: NextRequest) {
     message: "Round 2 code is ready. Enter the 4-digit code.",
   });
 
+  await supabase.from("team_events").insert({
+    team_id: teamId,
+    event_type: "round2_reset",
+    message: "Round 2 attempts reset for this team.",
+  });
+
   return NextResponse.json({ success: true });
 }

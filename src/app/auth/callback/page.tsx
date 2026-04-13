@@ -3,6 +3,7 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { playSound } from "@/lib/sound-manager";
 
 function AuthCallbackContent() {
   const router = useRouter();
@@ -12,6 +13,7 @@ function AuthCallbackContent() {
   useEffect(() => {
     const finalize = async () => {
       await supabaseBrowser.auth.getSession();
+      void playSound("Gotin", { bypassCooldown: true });
       router.replace(redirectTo);
     };
     finalize();

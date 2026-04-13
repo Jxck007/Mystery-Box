@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { isTestModeEnabled } from "@/lib/test-mode";
+import { GAME_CONFIGS } from "./game-panels";
+import { getTestRoundNumber, isTestModeEnabled, setTestRoundNumber } from "@/lib/test-mode";
+import { playSound } from "@/lib/sound-manager";
 
 type GameRecord = {
   id: string;
@@ -79,24 +81,36 @@ export default function TeamDashboardPage() {
   const [members, setMembers] = useState<
     { id: string; display_name: string; joined_at: string }[]
   >([]);
+  const [briefingOpen, setBriefingOpen] = useState(false);
+  const [briefingGame, setBriefingGame] = useState<GameRecord | null>(null);
+  const [briefingOpenRecord, setBriefingOpenRecord] = useState<BoxOpen | null>(null);
+  const [briefingBusy, setBriefingBusy] = useState(false);
+  const [testRound, setTestRound] = useState(1);
+  const [isOpening, setIsOpening] = useState(false);
+  const [isOpened, setIsOpened] = useState(false);
+  const [pendingBriefing, setPendingBriefing] = useState<{ game: GameRecord | null; open: BoxOpen | null } | null>(null);
+  const boxOpenAudioRef = useRef<HTMLAudioElement | null>(null);
+  const boxOpenTimerRef = useRef<number | null>(null);
   const testMode = isTestModeEnabled();
 
   const fetchBoxes = useCallback(async () => {
     if (!session) return;
     if (testMode) {
+      const activeTestRound = getTestRoundNumber();
+      setTestRound(activeTestRound);
       setCurrentGame({
-        id: "test-box",
-        game_title: "Rapid Quiz",
+        id: `test-box-${GAME_CONFIGS[0].key}`,
+        game_title: GAME_CONFIGS[0].title,
         game_description: "Test mode mock game.",
-        game_type: "quiz",
+        game_type: GAME_CONFIGS[0].key,
         points_value: 100,
-        round_number: 1,
+        round_number: activeTestRound,
       });
       setCurrentOpen(null);
       setRound({
         id: "test-round",
         status: "active",
-        round_number: 1,
+        round_number: activeTestRound,
         duration_seconds: 300,
         elapsed_seconds: 0,
         remaining_seconds: 300,
@@ -129,13 +143,15 @@ export default function TeamDashboardPage() {
   const fetchTeam = useCallback(async () => {
     if (!session) return;
     if (testMode) {
+      const activeTestRound = getTestRoundNumber();
       setTeam({
         id: "test-team",
         name: "TEST COLLECTIVE",
         leader_name: session.playerName,
-        score: 2400,
+        score: 0,
         member_count: 3,
         max_members: 4,
+        round2_status: activeTestRound === 2 ? "pending" : null,
       });
       return;
     }
@@ -279,9 +295,64 @@ export default function TeamDashboardPage() {
     if (!session) return;
     const intervalId = window.setInterval(() => {
       fetchBoxes();
-    }, 3000);
+      fetchTeam();
+      fetchMembers();
+    }, 7000);
     return () => window.clearInterval(intervalId);
-  }, [session, fetchBoxes]);
+  }, [session, fetchBoxes, fetchTeam, fetchMembers]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    boxOpenAudioRef.current = new Audio("/music/BoxOpen.mp3");
+    boxOpenAudioRef.current.preload = "auto";
+    boxOpenAudioRef.current.volume = 0.5;
+
+    return () => {
+      if (boxOpenTimerRef.current) {
+        window.clearTimeout(boxOpenTimerRef.current);
+      }
+      boxOpenAudioRef.current?.pause();
+      boxOpenAudioRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (currentOpen || testMode) {
+      setIsOpened(Boolean(currentOpen));
+    }
+  }, [currentOpen, testMode]);
+
+  useEffect(() => {
+    if (!isOpened || !pendingBriefing) return;
+    openBriefing(pendingBriefing.game, pendingBriefing.open);
+    setPendingBriefing(null);
+  }, [isOpened, pendingBriefing]);
+
+  const openBriefing = (game: GameRecord | null, openRecord: BoxOpen | null) => {
+    if (!game || !openRecord) return;
+    setBriefingGame(game);
+    setBriefingOpenRecord(openRecord);
+    setBriefingOpen(true);
+  };
+
+  const handleStartMission = async () => {
+    if (!session || !briefingGame) return;
+    setBriefingBusy(true);
+
+    await playSound("Start", { waitForEnd: true, bypassCooldown: true });
+
+    if (!testMode) {
+      await fetch("/api/boxes/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: session.teamId }),
+      });
+    }
+
+    setBriefingBusy(false);
+    setBriefingOpen(false);
+    router.push(`/game/${briefingGame.id}`);
+  };
 
   useEffect(() => {
     if (!session) return;
@@ -333,21 +404,54 @@ export default function TeamDashboardPage() {
     if (!session) {
       return;
     }
-    if (testMode) {
-      router.push("/game/test-box");
+    if (isOpening || isOpened || currentOpen) {
       return;
     }
-    if (currentOpen && currentGame) {
-      router.push(`/game/${currentGame.id}`);
-      return;
-    }
-
     if (round && round.status !== "active") {
       return;
     }
 
-    setLoading(true);
+    setIsOpening(true);
     setOpening(true);
+    setModalError("");
+
+    const audio = boxOpenAudioRef.current;
+    if (audio && audio.paused) {
+      audio.currentTime = 0;
+      void audio.play().catch(() => undefined);
+    }
+
+    if (boxOpenTimerRef.current) {
+      window.clearTimeout(boxOpenTimerRef.current);
+    }
+
+    boxOpenTimerRef.current = window.setTimeout(() => {
+      setIsOpening(false);
+      setIsOpened(true);
+      setOpening(false);
+    }, 2000);
+
+    if (testMode) {
+      const activeTestRound = getTestRoundNumber();
+      const selectedConfig = GAME_CONFIGS[Math.floor(Math.random() * GAME_CONFIGS.length)];
+      const testGame = {
+        id: `test-box-${selectedConfig.key}-${Date.now()}`,
+        game_title: selectedConfig.title,
+        game_description: "Answer fast and build your streak. Wrong answers reduce your score input.",
+        game_type: selectedConfig.key,
+        points_value: 100,
+        round_number: activeTestRound,
+      };
+      const testOpen = { id: `test-open-${Date.now()}`, box_id: "test-box", status: "pending" as const };
+      setCurrentGame({
+        ...testGame,
+      });
+      setCurrentOpen(testOpen);
+      setPendingBriefing({ game: testGame, open: testOpen });
+      return;
+    }
+
+    setLoading(true);
     const response = await fetch("/api/boxes/open", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -355,17 +459,27 @@ export default function TeamDashboardPage() {
     });
     const payload = await response.json();
     if (response.ok) {
-      setCurrentGame(payload.game ?? null);
-      setCurrentOpen(payload.open ?? null);
-      if (payload.game?.id) {
-        router.push(`/game/${payload.game.id}`);
-      }
+      const nextGame = payload.game ?? null;
+      const nextOpen = payload.open ?? null;
+      setCurrentGame(nextGame);
+      setCurrentOpen(nextOpen);
+      setPendingBriefing({ game: nextGame, open: nextOpen });
       setModalError("");
     } else {
       setModalError(payload.error ?? "Unable to open game");
+      if (boxOpenTimerRef.current) {
+        window.clearTimeout(boxOpenTimerRef.current);
+        boxOpenTimerRef.current = null;
+      }
+      boxOpenAudioRef.current?.pause();
+      if (boxOpenAudioRef.current) {
+        boxOpenAudioRef.current.currentTime = 0;
+      }
+      setIsOpening(false);
+      setIsOpened(false);
+      setOpening(false);
     }
     setLoading(false);
-    setOpening(false);
   };
 
   const roundBanner = useMemo(() => {
@@ -390,9 +504,9 @@ export default function TeamDashboardPage() {
   const boxStateClass =
     round?.status !== "active"
       ? "locked"
-      : opening
+      : isOpening
       ? "opening"
-      : currentOpen
+      : isOpened || currentOpen
       ? "opened"
       : "idle";
 
@@ -410,11 +524,49 @@ export default function TeamDashboardPage() {
         </h1>
       </div>
 
+      {testMode && (
+        <div className="card space-y-3">
+          <p className="label">TEST MODE CONTROLS</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={`button-secondary text-xs ${testRound === 1 ? "button-success" : ""}`}
+              onClick={() => {
+                setTestRoundNumber(1);
+                setTestRound(1);
+                fetchBoxes();
+              }}
+            >
+              ROUND 1
+            </button>
+            <button
+              type="button"
+              className={`button-secondary text-xs ${testRound === 2 ? "button-success" : ""}`}
+              onClick={() => {
+                setTestRoundNumber(2);
+                setTestRound(2);
+                fetchBoxes();
+                router.replace("/round2");
+              }}
+            >
+              ROUND 2
+            </button>
+            <button
+              type="button"
+              className="button-secondary text-xs"
+              onClick={() => router.push("/admin")}
+            >
+              ADMIN DASHBOARD
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="card space-y-4" style={{ borderTop: "3px solid var(--accent)" }}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="label">REAL_TIME_YIELD</p>
-            <h2 className="font-headline text-6xl font-black leading-none" style={{ letterSpacing: "-0.04em" }}>
+            <p className="label text-(--accent)">TOTAL SCORE</p>
+            <h2 className="font-headline text-7xl md:text-8xl font-black leading-none text-(--accent)" style={{ letterSpacing: "-0.04em", textShadow: "0 0 18px rgba(180,255,57,0.25)" }}>
               {team?.score ?? 0}
             </h2>
           </div>
@@ -444,35 +596,14 @@ export default function TeamDashboardPage() {
                     <span className="member-name">{member.display_name}</span>
                     {isLeader && <span className="role-pill role-leader">Leader</span>}
                     {isYou && <span className="role-pill role-you">You</span>}
-                    {session?.isLeader && !isLeader && (
-                      <button
-                        type="button"
-                        className="role-pill role-kick"
-                        onClick={async () => {
-                          const { data } = await supabaseBrowser.auth.getSession();
-                          if (!data.session) return;
-                          await fetch(
-                            `/api/teams/${session.teamId}/players/remove`,
-                            {
-                              method: "POST",
-                              headers: {
-                                "Content-Type": "application/json",
-                                Authorization: `Bearer ${data.session.access_token}`,
-                              },
-                              body: JSON.stringify({ playerId: member.id }),
-                            },
-                          );
-                          fetchMembers();
-                        }}
-                      >
-                        Remove
-                      </button>
-                    )}
                   </span>
                 );
               })}
             </div>
           )}
+          <p className="text-sm text-[var(--text-muted)]">
+            Team member setup is handled on the team creation screen.
+          </p>
           <button className="button-primary w-full sm:w-auto" onClick={() => router.push("/leaderboard")}>
             VIEW LEADERBOARD
           </button>
@@ -513,51 +644,52 @@ export default function TeamDashboardPage() {
               <p className="text-sm text-[var(--text-muted)]">REFRESHING BOXES...</p>
             )}
           </div>
+          {boxStateClass === "locked" && (
+            <p className="text-sm text-[var(--text-muted)] text-center">
+              Waiting for admin to start the round.
+            </p>
+          )}
           <div className="mystery-box-scene">
             <div
-              className={`mystery-box-wrapper ${boxStateClass}`}
+              className={`mb2-box ${boxStateClass === "opening" ? "shake glow" : ""} ${boxStateClass === "opened" ? "open" : ""} ${boxStateClass === "locked" ? "locked" : ""}`}
               onClick={handleBoxClick}
-              aria-disabled={opening || (round?.status !== "active" && !currentOpen)}
+              role="button"
+              aria-label="Open mystery box"
             >
-              <div className="mb-top">
-                <div className="mb-lid">
-                  <div className="mb-lid-shine" />
-                  <div className="mb-lid-stripe" />
-                </div>
-              </div>
-              <div className="mb-bottom">
-                <div className="mb-body">
-                  <div className="mb-body-stripe" />
-                  <div className="mb-icons">
-                    <span className="mb-icon mb-icon-1">?</span>
-                    <span className="mb-icon mb-icon-2">?</span>
-                    <span className="mb-icon mb-icon-3">?</span>
-                  </div>
-                </div>
-              </div>
-              <div className="mb-particles">
-                <span className="mb-particle mb-p1" />
-                <span className="mb-particle mb-p2" />
-                <span className="mb-particle mb-p3" />
-                <span className="mb-particle mb-p4" />
-                <span className="mb-particle mb-p5" />
-                <span className="mb-particle mb-p6" />
-              </div>
-              <div className="mb-rays">
-                <span className="mb-ray mb-r1" />
-                <span className="mb-ray mb-r2" />
-                <span className="mb-ray mb-r3" />
-                <span className="mb-ray mb-r4" />
-              </div>
-              <div className="mb-badge">
-                {boxStateClass === "locked"
-                  ? "LOCKED"
-                  : boxStateClass === "idle"
-                  ? "OPEN_NOW"
-                  : boxStateClass === "opening"
-                  ? "OPENING..."
-                  : "OPENED"}
-              </div>
+              <div className="mb2-lid" />
+              <div className="mb2-reward">🎉 +{currentGame?.points_value ?? 50} pts</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {briefingOpen && briefingGame && (
+        <div className="briefing-overlay" role="dialog" aria-modal="true" aria-label="Mission briefing">
+          <div className="briefing-modal card space-y-4">
+            <p className="section-tag">MISSION BRIEFING</p>
+            <h2 className="font-headline text-3xl font-black uppercase briefing-title-tight">
+              {briefingGame.game_title ?? "MYSTERY CHALLENGE"}
+            </h2>
+            <p className="text-sm text-(--text-muted)">
+              {briefingGame.game_description ?? "Read the rules, then start the mission timer when your team is ready."}
+            </p>
+            <ul className="rule-list">
+              <li>This game is capped at 180 seconds.</li>
+              <li>Question count always starts from 1.</li>
+              <li>Each question is randomized and timeout counts as skip (-3).</li>
+            </ul>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="button-primary"
+                disabled={briefingBusy || !briefingOpenRecord}
+                onClick={handleStartMission}
+              >
+                {briefingBusy ? "Starting..." : "START GAME"}
+              </button>
+              <button type="button" className="button-secondary" onClick={() => setBriefingOpen(false)}>
+                CLOSE
+              </button>
             </div>
           </div>
         </div>

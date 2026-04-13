@@ -6,7 +6,7 @@ export default function RulesPage() {
       <section className="space-y-3">
         <p className="section-tag">EVENT_PROTOCOL</p>
         <h1 className="font-headline text-6xl md:text-8xl font-black uppercase leading-[0.85]" style={{ letterSpacing: "-0.04em" }}>
-          THE SYMPOSIUM RULES
+          MYSTERY BOX INNOVATION RULES
         </h1>
       </section>
 

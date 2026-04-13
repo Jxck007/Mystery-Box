@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { requireUser } from "@/lib/supabase-server";
 
-const LOCKOUT_SECONDS = 30;
+const SHORT_LOCKOUT_SECONDS = 10;
+const LONG_LOCKOUT_SECONDS = 30;
+const SHORT_LOCKOUT_ATTEMPTS = 3;
 const QUALIFY_LIMIT = 4;
 
 export async function POST(request: NextRequest) {
@@ -66,12 +68,53 @@ export async function POST(request: NextRequest) {
   }
 
   if (trimmed !== team.round2_code) {
-    const lockUntil = new Date(Date.now() + LOCKOUT_SECONDS * 1000).toISOString();
+    const { data: latestReset } = await supabase
+      .from("team_events")
+      .select("created_at")
+      .eq("team_id", team.id)
+      .eq("event_type", "round2_reset")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let attemptsQuery = supabase
+      .from("team_events")
+      .select("id", { count: "exact", head: true })
+      .eq("team_id", team.id)
+      .eq("event_type", "round2_attempt");
+
+    if (latestReset?.created_at) {
+      attemptsQuery = attemptsQuery.gt("created_at", latestReset.created_at);
+    }
+
+    const { count } = await attemptsQuery;
+    const nextAttempt = (count ?? 0) + 1;
+    const lockSeconds =
+      nextAttempt <= SHORT_LOCKOUT_ATTEMPTS
+        ? SHORT_LOCKOUT_SECONDS
+        : LONG_LOCKOUT_SECONDS;
+
+    const lockUntil = new Date(Date.now() + lockSeconds * 1000).toISOString();
+
     await supabase
       .from("teams")
       .update({ round2_lock_until: lockUntil })
       .eq("id", team.id);
-    return NextResponse.json({ error: "Wrong code. Locked for 30s." }, { status: 400 });
+
+    await supabase.from("team_events").insert({
+      team_id: team.id,
+      event_type: "round2_attempt",
+      message: `Wrong round 2 code attempt ${nextAttempt}. Locked for ${lockSeconds}s.`,
+    });
+
+    return NextResponse.json(
+      {
+        error: `Wrong code. Locked for ${lockSeconds}s.`,
+        attempt: nextAttempt,
+        lockSeconds,
+      },
+      { status: 400 },
+    );
   }
 
   const { data: solvedTeams } = await supabase

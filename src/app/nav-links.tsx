@@ -71,7 +71,6 @@ export function MobileNavLinks() {
       <NavLinkButton href="/" label="HOME" className="mobile-nav-link" />
       <NavLinkButton href="/team" label="TEAM" className="mobile-nav-link" />
       <NavLinkButton href="/leaderboard" label="RANK" className="mobile-nav-link" />
-      <NavLinkButton href="/admin" label="ADMIN" className="mobile-nav-link" />
     </>
   );
 }

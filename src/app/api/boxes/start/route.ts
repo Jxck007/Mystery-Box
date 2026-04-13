@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     await supabase.from("team_events").insert({
       team_id: teamId,
       event_type: "round",
-      message: "Your game timer started.",
+      message: `Team started gameplay timer for Round ${roundNumber}.`,
     });
 
     return NextResponse.json({ started_at: updated.started_at });
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
   await supabase.from("team_events").insert({
     team_id: teamId,
     event_type: "round",
-    message: "Your game timer started.",
+    message: `Team started gameplay timer for Round ${roundNumber}.`,
   });
 
   return NextResponse.json({ started_at: created.started_at });

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Inter, Space_Grotesk } from "next/font/google";
-import { HeaderNavLinks, MobileNavLinks } from "./nav-links";
+import { HeaderNavLinks } from "./nav-links";
+import { SoundBootstrap } from "./sound-bootstrap";
 import "./globals.css";
 
 const geistMono = Geist_Mono({
@@ -22,7 +23,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Mystery Box Event",
+  title: "Mystery Box Innovation",
   description: "Teams solve mystery tasks, open boxes, and earn points under admin oversight.",
   icons: {
     icon: "/Logo.jpg",
@@ -45,42 +46,18 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${geistMono.variable} ${spaceGrotesk.variable} antialiased`}
       >
-        <header
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 50,
-            background: "var(--bg-base)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 32px",
-            height: "64px",
-            borderBottom: "1px solid rgba(66,74,53,0.2)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
-            <span
-              style={{
-                fontFamily: "var(--font-headline)",
-                fontWeight: 900,
-                fontSize: 22,
-                letterSpacing: "-0.04em",
-                color: "#fff",
-                textTransform: "uppercase",
-              }}
-            >
-              SYMPOSIUM
+        <SoundBootstrap />
+        <header className="app-header">
+          <div className="app-brand">
+            <span className="app-brand-title">
+              MYSTERY BOX INNOVATION
             </span>
           </div>
-          <HeaderNavLinks />
+          <div className="header-actions">
+            <HeaderNavLinks />
+          </div>
         </header>
-        <div style={{ paddingTop: 64 }}>{children}</div>
-        <nav className="mobile-nav">
-          <MobileNavLinks />
-        </nav>
+        <div className="app-body-offset">{children}</div>
       </body>
     </html>
   );

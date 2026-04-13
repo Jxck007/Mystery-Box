@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { isTestModeEnabled } from "@/lib/test-mode";
+import { playSound } from "@/lib/sound-manager";
 
 export default function CreateTeamPage() {
   const router = useRouter();
@@ -30,6 +31,21 @@ export default function CreateTeamPage() {
         router.replace("/auth?redirect=/create-team");
         return;
       }
+
+      const metadata = data.session.user.user_metadata ?? {};
+      const suggestedLeaderName =
+        typeof metadata.display_name === "string" && metadata.display_name.trim()
+          ? metadata.display_name.trim()
+          : typeof metadata.full_name === "string" && metadata.full_name.trim()
+            ? metadata.full_name.trim()
+            : typeof metadata.name === "string" && metadata.name.trim()
+              ? metadata.name.trim()
+              : "";
+
+      if (suggestedLeaderName) {
+        setLeaderName((previous) => (previous.trim() ? previous : suggestedLeaderName));
+      }
+
       const response = await fetch("/api/players/me", {
         headers: { Authorization: `Bearer ${data.session.access_token}` },
       });
@@ -87,6 +103,7 @@ export default function CreateTeamPage() {
     localStorage.setItem("team_id", payload.id);
     localStorage.setItem("player_name", payload.leader_name);
     localStorage.setItem("is_leader", "true");
+    void playSound("Gotin", { bypassCooldown: true });
     setLoading(false);
     router.push("/team");
   };
