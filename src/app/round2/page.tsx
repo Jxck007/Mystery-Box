@@ -41,6 +41,15 @@ export default function Round2Page() {
   const round2ResultPlayedRef = useRef(false);
   const testMode = isTestModeEnabled();
 
+  const playRound2Result = useCallback((qualified: boolean) => {
+    // Mark as played immediately to prevent duplicate playback on subsequent state refresh.
+    round2ResultPlayedRef.current = true;
+    playSound("correct_r2");
+    window.setTimeout(() => {
+      playSound(qualified ? "win_r2" : "lose_r2");
+    }, 650);
+  }, []);
+
   const fetchRound = useCallback(async () => {
     if (!session) return;
     if (testMode) {
@@ -206,8 +215,7 @@ export default function Round2Page() {
                         playSound("wrong_r2");
                         setRound2Code("");
                       } else {
-                        playSound("correct_r2");
-                        playSound("win_r2");
+                        playRound2Result(true);
                       }
                       setRound2Status(
                         round2Code === "1234"
@@ -243,8 +251,7 @@ export default function Round2Page() {
                       setRound2Status(payload.error ?? "Unable to submit code");
                       return;
                     }
-                    playSound("correct_r2");
-                    playSound(payload.qualified ? "win_r2" : "lose_r2");
+                    playRound2Result(Boolean(payload.qualified));
                     setRound2Status(
                       payload.qualified
                         ? "Code accepted. You qualified for Round 3."

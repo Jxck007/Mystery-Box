@@ -279,6 +279,66 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // When Round 1 ends, eliminate teams outside the configured cutoff.
+    if ((round.round_number ?? 0) === 1) {
+      const { data: rankedTeams, error: rankedTeamsError } = await supabase
+        .from("teams")
+        .select("id, score, created_at")
+        .eq("is_active", true)
+        .order("score", { ascending: false })
+        .order("created_at", { ascending: true });
+
+      if (rankedTeamsError) {
+        return NextResponse.json({ error: rankedTeamsError.message }, { status: 500 });
+      }
+
+      const totalTeams = rankedTeams?.length ?? 0;
+      const round1Cutoff = Math.max(1, Math.ceil(totalTeams * 0.6));
+      const eliminatedTeams = (rankedTeams ?? []).slice(round1Cutoff);
+      const survivingTeams = (rankedTeams ?? []).slice(0, round1Cutoff);
+
+      if (survivingTeams.length > 0) {
+        await supabase
+          .from("teams")
+          .update({
+            is_active: true,
+            eliminated_at: null,
+            eliminated_round: null,
+            eliminated_position: null,
+          })
+          .in("id", survivingTeams.map((team) => team.id));
+      }
+
+      if (eliminatedTeams.length > 0) {
+        const eliminatedIds = eliminatedTeams.map((team) => team.id);
+        await supabase
+          .from("teams")
+          .update({
+            is_active: false,
+            eliminated_at: now,
+            eliminated_round: 1,
+          })
+          .in("id", eliminatedIds);
+
+        await Promise.all(
+          eliminatedTeams.map((team, index) =>
+            supabase
+              .from("teams")
+              .update({ eliminated_position: round1Cutoff + index + 1 })
+              .eq("id", team.id),
+          ),
+        );
+
+        await supabase.from("team_events").insert(
+          eliminatedTeams.map((team, index) => ({
+            team_id: team.id,
+            event_type: "elimination",
+            message: `Round 1 elimination. You finished at position ${round1Cutoff + index + 1}.`,
+          })),
+        );
+      }
+    }
+
     await supabase
       .from("team_rounds")
       .update({ status: "ended", ended_at: now })

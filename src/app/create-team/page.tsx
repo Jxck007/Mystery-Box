@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { isTestModeEnabled } from "@/lib/test-mode";
 import { playSound } from "@/lib/sound-manager";
@@ -14,6 +14,7 @@ export default function CreateTeamPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const authEntrySoundPlayedRef = useRef(false);
 
   const cleanedMembers = useMemo(
     () => memberNames.map((name) => name.trim()).filter(Boolean),
@@ -23,6 +24,10 @@ export default function CreateTeamPage() {
   useEffect(() => {
     const check = async () => {
       if (isTestModeEnabled()) {
+        if (!authEntrySoundPlayedRef.current) {
+          authEntrySoundPlayedRef.current = true;
+          playSound("auth_success");
+        }
         setCheckingAuth(false);
         return;
       }
@@ -53,6 +58,10 @@ export default function CreateTeamPage() {
         router.replace("/team");
         return;
       }
+      if (!authEntrySoundPlayedRef.current) {
+        authEntrySoundPlayedRef.current = true;
+        playSound("auth_success");
+      }
       setCheckingAuth(false);
     };
     check();
@@ -60,6 +69,7 @@ export default function CreateTeamPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    playSound("button_press");
     setError("");
     setLoading(true);
 
@@ -67,6 +77,7 @@ export default function CreateTeamPage() {
       localStorage.setItem("team_id", "test-team");
       localStorage.setItem("player_name", leaderName || "TEST_OPERATOR");
       localStorage.setItem("is_leader", "true");
+      playSound("team_created");
       setLoading(false);
       router.push("/team");
       return;
@@ -103,7 +114,7 @@ export default function CreateTeamPage() {
     localStorage.setItem("team_id", payload.id);
     localStorage.setItem("player_name", payload.leader_name);
     localStorage.setItem("is_leader", "true");
-    playSound("auth_success");
+    playSound("team_created");
     setLoading(false);
     router.push("/team");
   };
@@ -129,7 +140,14 @@ export default function CreateTeamPage() {
         <section className="md:col-span-7 card space-y-6" style={{ background: "var(--bg-container)" }}>
           <div className="flex items-center justify-between">
             <p className="label">CREATE TEAM</p>
-            <button type="button" className="button-muted text-xs" onClick={() => router.back()}>
+            <button
+              type="button"
+              className="button-muted text-xs"
+              onClick={() => {
+                playSound("button_press");
+                router.back();
+              }}
+            >
               BACK
             </button>
           </div>
@@ -163,7 +181,10 @@ export default function CreateTeamPage() {
                   type="button"
                   className="card py-6 text-left"
                   style={{ borderColor: (memberNames.length + 1) === 3 ? "var(--accent)" : "rgba(66,74,53,0.3)" }}
-                  onClick={() => setMemberNames(["", ""])}
+                  onClick={() => {
+                    playSound("button_press");
+                    setMemberNames(["", ""]);
+                  }}
                 >
                   <span className="font-headline text-4xl font-black">03</span>
                   <span className="label">MINIMUM UNIT</span>
@@ -172,7 +193,10 @@ export default function CreateTeamPage() {
                   type="button"
                   className="card py-6 text-left"
                   style={{ borderColor: (memberNames.length + 1) === 4 ? "var(--accent)" : "rgba(66,74,53,0.3)" }}
-                  onClick={() => setMemberNames(["", "", ""])}
+                  onClick={() => {
+                    playSound("button_press");
+                    setMemberNames(["", "", ""]);
+                  }}
                 >
                   <span className="font-headline text-4xl font-black">04</span>
                   <span className="label">MAXIMUM UNIT</span>

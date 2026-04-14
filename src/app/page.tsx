@@ -4,13 +4,26 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { disableTestMode, enableTestMode, isTestModeEnabled } from "@/lib/test-mode";
+import { playSound } from "@/lib/sound-manager";
 
 export default function HomePage() {
+  const TEMP_SITE_PASSWORD = "jack123";
   const [isAuthed, setIsAuthed] = useState(false);
   const [hasTeam, setHasTeam] = useState(false);
   const [testMode, setTestMode] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+  const [unlockChecked, setUnlockChecked] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [unlockError, setUnlockError] = useState("");
 
   useEffect(() => {
+    const isUnlocked = localStorage.getItem("site-unlocked") === "true";
+    setUnlocked(isUnlocked);
+    setUnlockChecked(true);
+  }, []);
+
+  useEffect(() => {
+    if (!unlockChecked || !unlocked) return;
     const localTest = isTestModeEnabled();
     setTestMode(localTest);
     if (localTest) {
@@ -32,7 +45,54 @@ export default function HomePage() {
       setHasTeam(response.ok);
     };
     check();
-  }, []);
+  }, [unlockChecked, unlocked]);
+
+  if (!unlockChecked || !unlocked) {
+    return (
+      <main className="page-shell min-h-screen flex items-center justify-center" style={{ background: "radial-gradient(circle at 50% 20%, rgba(180,255,57,0.12), transparent 55%), #070a06" }}>
+        <section className="card w-full max-w-md space-y-4" style={{ border: "1px solid rgba(180,255,57,0.35)", boxShadow: "0 0 30px rgba(180,255,57,0.12)" }}>
+          <p className="section-tag">SITE_LOCKED</p>
+          <h1 className="font-headline text-3xl font-black uppercase" style={{ letterSpacing: "-0.03em" }}>
+            ACCESS LOCK
+          </h1>
+          <p className="text-sm text-(--text-muted)">
+            This site is temporarily password protected.
+          </p>
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (passwordInput === TEMP_SITE_PASSWORD) {
+                localStorage.setItem("site-unlocked", "true");
+                setUnlocked(true);
+                setUnlockError("");
+                setPasswordInput("");
+                return;
+              }
+              setUnlockError("Incorrect password.");
+            }}
+          >
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(event) => {
+                setPasswordInput(event.target.value);
+                if (unlockError) setUnlockError("");
+              }}
+              className="input-field"
+              placeholder="Enter password"
+              autoComplete="off"
+              required
+            />
+            <button type="submit" className="button-primary w-full">
+              Unlock
+            </button>
+          </form>
+          {unlockError && <p className="text-sm" style={{ color: "var(--error)" }}>{unlockError}</p>}
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="page-shell min-h-screen">
@@ -60,17 +120,21 @@ export default function HomePage() {
               Initialize your team journey, join the active round flow, and complete each mission step with synchronized scoring.
             </p>
             {!isAuthed && !testMode && (
-              <Link href="/auth" className="button-primary w-full sm:w-auto text-center">
+              <Link
+                href="/auth?mode=signup"
+                className="button-primary w-full sm:w-auto text-center"
+                onClick={() => playSound("button_press")}
+              >
                 START ACCESS FLOW
               </Link>
             )}
             {(isAuthed && hasTeam) || testMode ? (
-              <Link href="/team" className="button-primary w-full sm:w-auto text-center">
+              <Link href="/team" className="button-primary w-full sm:w-auto text-center" onClick={() => playSound("button_press")}>
                 GO TO TEAM CONSOLE
               </Link>
             ) : null}
             {isAuthed && !hasTeam && !testMode && (
-              <Link href="/create-team" className="button-primary w-full sm:w-auto text-center">
+              <Link href="/create-team" className="button-primary w-full sm:w-auto text-center" onClick={() => playSound("button_press")}>
                 CREATE YOUR TEAM
               </Link>
             )}
@@ -88,6 +152,7 @@ export default function HomePage() {
               <button
                 className="button-secondary text-xs"
                 onClick={() => {
+                  playSound("button_press");
                   enableTestMode();
                   setTestMode(true);
                   setIsAuthed(true);
@@ -100,6 +165,7 @@ export default function HomePage() {
               <button
                 className="button-danger text-xs"
                 onClick={() => {
+                  playSound("button_press");
                   disableTestMode();
                   setTestMode(false);
                   setIsAuthed(false);
