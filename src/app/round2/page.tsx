@@ -38,6 +38,8 @@ type PairingStatusRecord = {
   winner_id?: string | null;
   team_a_id?: string | null;
   team_b_id?: string | null;
+  team_a_color?: string | null;
+  team_b_color?: string | null;
   team_a?: { id: string; name: string; leader_name?: string | null } | null;
   team_b?: { id: string; name: string; leader_name?: string | null } | null;
 };
@@ -327,6 +329,12 @@ export default function Round2Page() {
   })();
 
   const pairLabel = activePairing?.pair_number ?? null;
+  const colorNote = (() => {
+    if (!activePairing || !session) return null;
+    if (activePairing.team_a_id === session.teamId) return activePairing.team_a_color ?? null;
+    if (activePairing.team_b_id === session.teamId) return activePairing.team_b_color ?? null;
+    return null;
+  })();
   const solvedQualified = Boolean(team?.round2_solved_at && team.round2_status === "qualified");
   const solvedEliminated = Boolean(team?.round2_solved_at && team.round2_status !== "qualified");
 
@@ -370,6 +378,7 @@ export default function Round2Page() {
               <div className="card py-3" style={{ border: "1px solid rgba(88,175,255,0.35)" }}>
                 <p className="label">BATTLE BRIEF</p>
                 <p className="font-mono text-sm">Your Archenemy Is: {opponentName ?? "Awaiting pairing"}</p>
+                <p className="font-mono text-sm mt-1">Your Color Note: {colorNote ? `[${colorNote.toUpperCase()}]` : "[PENDING]"}</p>
                 <p className="font-mono text-xs text-[var(--text-muted)] mt-1">
                   {pairLabel ? `Battle Pair ${pairLabel}` : "Pair assignment pending"} / Crack the code before them.
                 </p>
@@ -423,9 +432,9 @@ export default function Round2Page() {
                           const lockSeconds = nextAttempt === 3 ? 10 : nextAttempt === 6 ? 30 : 50;
                           setLastLockSeconds(lockSeconds);
                           setLockRemaining(lockSeconds);
-                          setRound2Status(`Wrong code in test mode. Locked for ${lockSeconds}s.`);
+                          setRound2Status("Access denied, Attempts Locked");
                         } else {
-                          setRound2Status(`Invalid code in test mode (use 1234). Attempt ${nextAttempt}.`);
+                          setRound2Status(`OOPS!! Access Denied, Invalid Code - Attempt ${nextAttempt}`);
                         }
                         setRound2Code("");
                       } else {
@@ -547,6 +556,10 @@ export default function Round2Page() {
               <div>
                 <p className="label">ARCHENEMY</p>
                 <p className="font-mono text-xs">{opponentName ?? "PENDING"}</p>
+              </div>
+              <div>
+                <p className="label">COLOR NOTE</p>
+                <p className="font-mono text-xs">{colorNote ?? "PENDING"}</p>
               </div>
               <div>
                 <p className="label">CODE SLOTS</p>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/app/api/admin/_auth";
+import { ROUND2_PAIR_COUNT } from "@/lib/pair-battle";
 
 /**
  * POST /api/admin/pair-battle/start
@@ -39,11 +40,17 @@ export async function POST(request: NextRequest) {
     }, { status: 404 });
   }
 
+  if (pairings.length < ROUND2_PAIR_COUNT) {
+    return NextResponse.json({
+      error: `Round 2 requires ${ROUND2_PAIR_COUNT} pairs. Found ${pairings.length}.`,
+    }, { status: 400 });
+  }
+
   // Check if all pairs are complete
   const incomplete = pairings.filter((p) => !p.team_a_id || !p.team_b_id);
   if (incomplete.length > 0) {
     return NextResponse.json({
-      error: `${incomplete.length} pairs are incomplete. All 6 pairs must have 2 teams.`,
+      error: `${incomplete.length} pairs are incomplete. All ${ROUND2_PAIR_COUNT} pairs must have 2 teams.`,
     }, { status: 400 });
   }
 
@@ -113,6 +120,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     success: true,
     pairings: updated,
-    message: "Pair battle started. All 6 pairs in progress.",
+    message: `Pair battle started. All ${ROUND2_PAIR_COUNT} pairs in progress.`,
   });
 }

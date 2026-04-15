@@ -43,6 +43,7 @@ type Round2State = {
 type LeaderboardPayload = {
   entries: LeaderboardEntry[];
   round2: Round2State | null;
+  activeRoundNumber?: number | null;
   pairings: PairRow[];
 };
 
@@ -59,6 +60,9 @@ export default function LeaderboardPage() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [pairings, setPairings] = useState<PairRow[]>([]);
   const [round2, setRound2] = useState<Round2State | null>(null);
+  const [activeRoundNumber, setActiveRoundNumber] = useState<number | null>(null);
+  const [selectedRoundTab, setSelectedRoundTab] = useState<"round1" | "round2">("round1");
+  const [autoTabInitialized, setAutoTabInitialized] = useState(false);
   const [loading, setLoading] = useState(true);
   const [checkedSession, setCheckedSession] = useState(false);
   const [round1Outcome, setRound1Outcome] = useState<"selected" | "eliminated" | null>(null);
@@ -112,6 +116,11 @@ export default function LeaderboardPage() {
         { id: "t6", name: "PHANTOM LOGIC", score: 1625, member_count: 4, max_members: 4 },
       ]);
       setRound2({ id: "test-round2", round_number: 2, status: "active" });
+      setActiveRoundNumber(2);
+      if (!autoTabInitialized) {
+        setSelectedRoundTab("round2");
+        setAutoTabInitialized(true);
+      }
       setPairings([
         {
           id: "p1",
@@ -165,6 +174,7 @@ export default function LeaderboardPage() {
       setEntries(data);
       setPairings([]);
       setRound2(null);
+      setActiveRoundNumber(null);
       setLoading(false);
       return;
     }
@@ -172,8 +182,13 @@ export default function LeaderboardPage() {
     setEntries(Array.isArray(data.entries) ? data.entries : []);
     setPairings(Array.isArray(data.pairings) ? data.pairings : []);
     setRound2(data.round2 ?? null);
+    setActiveRoundNumber(typeof data.activeRoundNumber === "number" ? data.activeRoundNumber : null);
+    if (!autoTabInitialized && typeof data.activeRoundNumber === "number") {
+      setSelectedRoundTab(data.activeRoundNumber === 2 ? "round2" : "round1");
+      setAutoTabInitialized(true);
+    }
     setLoading(false);
-  }, [testMode]);
+  }, [autoTabInitialized, testMode]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -244,8 +259,14 @@ export default function LeaderboardPage() {
   }, [fetchLeaderboard]);
 
   const showBattleView = useMemo(() => {
-    return Boolean(round2 && ["active", "paused", "ended"].includes(round2.status) && pairings.length > 0);
-  }, [pairings.length, round2]);
+    const round2Available = Boolean(round2 && ["active", "paused", "ended"].includes(round2.status) && pairings.length > 0);
+    return selectedRoundTab === "round2" && round2Available;
+  }, [pairings.length, round2, selectedRoundTab]);
+
+  const hasNoRoundStarted = useMemo(() => {
+    if (loading || testMode) return false;
+    return !activeRoundNumber && !round2;
+  }, [activeRoundNumber, loading, round2, testMode]);
 
   if (!checkedSession) {
     return (
@@ -268,7 +289,32 @@ export default function LeaderboardPage() {
           <span className="inline-block w-2 h-2 bg-[var(--accent)]" style={{ animation: "pulse-dot 1.2s ease-in-out infinite" }} />
           <span className="label text-[var(--accent)]">STREAMING</span>
         </div>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            type="button"
+            className={`button-neutral text-xs ${selectedRoundTab === "round1" ? "ring-2 ring-sky-400" : ""}`}
+            onClick={() => setSelectedRoundTab("round1")}
+          >
+            Round 1
+          </button>
+          <button
+            type="button"
+            className={`button-neutral text-xs ${selectedRoundTab === "round2" ? "ring-2 ring-cyan-400" : ""}`}
+            onClick={() => setSelectedRoundTab("round2")}
+            disabled={!round2 || pairings.length === 0}
+          >
+            Round 2
+          </button>
+        </div>
       </div>
+
+      {hasNoRoundStarted && (
+        <section className="card text-center py-14">
+          <p className="label">TOURNAMENT STANDBY</p>
+          <h2 className="font-headline text-4xl font-black uppercase mt-2">No rounds have started yet</h2>
+          <p className="text-sm text-slate-300 mt-3">Waiting for admin to initialize the event.</p>
+        </section>
+      )}
 
       {round1Outcome === "selected" && (
         <div className="banner paused">Congrats on passing Round 1. Auto redirecting to dashboard...</div>
@@ -292,7 +338,7 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      {showBattleView && (
+      {!hasNoRoundStarted && showBattleView && (
         <section className="card space-y-4 round2-battle-board">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -345,6 +391,7 @@ export default function LeaderboardPage() {
         </section>
       )}
 
+      {!hasNoRoundStarted && selectedRoundTab === "round1" && (
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -397,6 +444,14 @@ export default function LeaderboardPage() {
           )}
         </div>
       </div>
+      )}
+
+      {!hasNoRoundStarted && selectedRoundTab === "round2" && !showBattleView && (
+        <section className="card text-center py-10">
+          <p className="label">ROUND 2 VIEW</p>
+          <p className="text-sm text-slate-300 mt-2">Round 2 battle board is not available yet.</p>
+        </section>
+      )}
 
       <style jsx>{`
         .round2-battle-board {

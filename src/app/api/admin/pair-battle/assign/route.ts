@@ -1,25 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { requireUser } from "@/lib/supabase-server";
+import { requireAdmin } from "@/app/api/admin/_auth";
 
 /**
  * POST /api/admin/pair-battle/assign
  * Assigns a team to a pair (team A or team B)
- * Body: { pairingId: string, teamId: string, slot: "a" | "b" }
+ * Body: { pairingId: string, teamId?: string | null, slot: "a" | "b" }
  */
 export async function POST(request: NextRequest) {
-  const auth = await requireUser(request);
-  if (!auth.user) {
-    return NextResponse.json(
-      { error: auth.error ?? "Unauthorized" },
-      { status: 401 }
-    );
-  }
+  const auth = await requireAdmin(request);
+  if (auth) return auth;
 
   const body = await request.json().catch(() => null);
-  if (!body || !body.pairingId || !body.teamId || !body.slot) {
+  if (!body || !body.pairingId || !body.slot) {
     return NextResponse.json(
-      { error: "pairingId, teamId, and slot required" },
+      { error: "pairingId and slot required" },
       { status: 400 }
     );
   }
@@ -44,26 +39,41 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Pairing not found" }, { status: 404 });
   }
 
-  // Check if the pairing is already full
   const slotKey = body.slot === "a" ? "team_a_id" : "team_b_id";
   const otherSlotKey = body.slot === "a" ? "team_b_id" : "team_a_id";
 
-  if (pairing[slotKey]) {
-    return NextResponse.json(
-      { error: `Slot ${body.slot} is already occupied` },
-      { status: 400 }
-    );
+  const incomingTeamId = typeof body.teamId === "string" && body.teamId.trim().length > 0
+    ? body.teamId.trim()
+    : null;
+
+  if (incomingTeamId) {
+    const { data: occupiedRows, error: occupiedError } = await supabase
+      .from("pair_pairings")
+      .select("id, team_a_id, team_b_id")
+      .eq("round_id", pairing.round_id)
+      .or(`team_a_id.eq.${incomingTeamId},team_b_id.eq.${incomingTeamId}`);
+
+    if (occupiedError) {
+      return NextResponse.json({ error: occupiedError.message }, { status: 500 });
+    }
+
+    const occupiedElsewhere = (occupiedRows ?? []).find((row) => row.id !== pairing.id);
+    if (occupiedElsewhere) {
+      return NextResponse.json(
+        { error: "Team already assigned in another pair. Remove or swap first." },
+        { status: 400 },
+      );
+    }
   }
 
   // Update the pairing
   const updateData: Record<string, string | null> = {
-    [slotKey]: body.teamId,
+    [slotKey]: incomingTeamId,
   };
 
-  // If both slots are filled, set status to "ready"
-  if (pairing[otherSlotKey]) {
-    updateData.status = "ready";
-  }
+  const nextTeamA = slotKey === "team_a_id" ? incomingTeamId : pairing.team_a_id;
+  const nextTeamB = slotKey === "team_b_id" ? incomingTeamId : pairing.team_b_id;
+  updateData.status = nextTeamA && nextTeamB ? "ready" : "waiting";
 
   const { data: updated, error: updateError } = await supabase
     .from("pair_pairings")
@@ -79,6 +89,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     success: true,
     pairing: updated,
-    message: `Team assigned to slot ${body.slot}`,
+    message: incomingTeamId ? `Team assigned to slot ${body.slot}` : `Slot ${body.slot} cleared`,
   });
 }

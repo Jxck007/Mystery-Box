@@ -116,7 +116,7 @@ export function MysteryBox({ disabled, isClicked, videoPreviewSrc, isPlaying, ga
                 initial={{ opacity: 0, scale: 0.9, filter: "blur(8px)" }}
                 animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                 transition={{ duration: 1.2, ease: "easeOut" }}
-                className="absolute inset-0 flex flex-col items-center justify-center z-[20] pointer-events-none"
+                className="absolute inset-0 flex flex-col items-center justify-center z-[20] pointer-events-none pb-12 sm:pb-16"
               >
                   <h1 
                     className="font-headline uppercase font-black text-center w-full" 

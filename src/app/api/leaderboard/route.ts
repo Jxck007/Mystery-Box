@@ -55,6 +55,13 @@ export async function GET(request: Request) {
     .eq("round_number", 2)
     .maybeSingle();
 
+  const { data: rounds } = await supabase
+    .from("rounds")
+    .select("round_number, status")
+    .order("round_number", { ascending: true });
+
+  const activeRound = (rounds ?? []).find((round) => round.status === "active") ?? null;
+
   let pairings: unknown[] = [];
   if (round2?.id) {
     const { data: pairingRows } = await supabase
@@ -171,6 +178,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     entries: sorted,
     round2,
+    activeRoundNumber: activeRound?.round_number ?? null,
     pairings,
   });
 }

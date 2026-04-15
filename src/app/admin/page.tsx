@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { PairBattleBoard } from "@/app/components/pair-battle-board";
+import { ROUND1_SURVIVOR_LIMIT, ROUND2_PAIR_COUNT } from "@/lib/pair-battle";
 
 type TeamDetail = {
   id: string;
@@ -55,8 +56,7 @@ type TeamEventLog = {
   created_at: string;
 };
 
-const ROUND1_SURVIVOR_LIMIT = 12;
-const ROUND2_QUALIFY_LIMIT = 6;
+const ROUND2_QUALIFY_LIMIT = ROUND2_PAIR_COUNT;
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -76,6 +76,7 @@ export default function AdminDashboardPage() {
   const [actionBusy, setActionBusy] = useState<Record<string, boolean>>({});
   const [eventLogs, setEventLogs] = useState<TeamEventLog[]>([]);
   const [expandedTeamLogs, setExpandedTeamLogs] = useState<Record<string, boolean>>({});
+  const [adminTab, setAdminTab] = useState<"round1" | "round2">("round1");
 
   const getAdminHeaders = useCallback(async () => {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -652,6 +653,23 @@ export default function AdminDashboardPage() {
             <p className="text-sm text-[var(--text-muted)]">
               Launch rounds, monitor teams, and oversee the mission pipeline.
             </p>
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <span className="label">ADMIN CONTROL PANEL</span>
+              <button
+                type="button"
+                className={`button-neutral text-xs ${adminTab === "round1" ? "ring-2 ring-sky-400" : ""}`}
+                onClick={() => setAdminTab("round1")}
+              >
+                Round 1
+              </button>
+              <button
+                type="button"
+                className={`button-neutral text-xs ${adminTab === "round2" ? "ring-2 ring-cyan-400" : ""}`}
+                onClick={() => setAdminTab("round2")}
+              >
+                Round 2
+              </button>
+            </div>
           </div>
 
           <div className="card admin-section space-y-4">
@@ -1031,19 +1049,9 @@ export default function AdminDashboardPage() {
                   </button>
                 );
               })()}
-              {(() => {
-                const busyKey = "elimination-round2";
-                const busy = actionBusy[busyKey];
-                return (
-                  <button
-                    className="admin-action-button button-danger"
-                    onClick={() => handleApplyElimination(2, busyKey)}
-                    disabled={busy || round2SolvedCount === 0}
-                  >
-                    {busy ? "Syncing..." : `Apply Round 2 Cut (First ${ROUND2_QUALIFY_LIMIT})`}
-                  </button>
-                );
-              })()}
+              <div className="rounded-lg border border-slate-700/50 bg-slate-900/70 px-3 py-2 text-xs text-slate-300">
+                Round 2 elimination is automatic in pair battle mode.
+              </div>
             </div>
         <div className="overflow-x-auto">
           <table className="leaderboard-table">

@@ -7,11 +7,12 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { GAME_CONFIGS } from "./game-panels";
 import { getTestRoundNumber, isTestModeEnabled, setTestRoundNumber } from "@/lib/test-mode";
 import { playSound } from "@/lib/sound-manager";
+import { SecurityManager } from "@/lib/security-manager";
 import { MysteryBox } from "./components/mystery-box";
 
 import { UnlockVideoOverlay } from "./components/unlock-video-overlay";
 import { RewardReveal } from "./components/reward-reveal";
-import { default as GamePage } from "../game/[boxId]/page";
+import { SecurityLockOverlay } from "./components/security-lock-overlay";
 
 type GameRecord = {
   id: string;
@@ -112,6 +113,20 @@ export default function TeamDashboardPage() {
   const [dismissedRevealOpenId, setDismissedRevealOpenId] = useState<string | null>(null);
   const [testMode, setTestMode] = useState(false);
   const [testModeReady, setTestModeReady] = useState(false);
+
+  const [securityLockActive, setSecurityLockActive] = useState(false);
+  const [lockSecondsRemaining, setLockSecondsRemaining] = useState(0);
+  const [securityMessage, setSecurityMessage] = useState(
+    "Access temporarily locked due to suspicious behavior.",
+  );
+  const [showSecurityHint, setShowSecurityHint] = useState(false);
+  const visibilityLeaveTimeRef = useRef<number | null>(null);
+  const blurTimeRef = useRef<number | null>(null);
+  const touchStartTimeRef = useRef<number | null>(null);
+  const quickSwitchCountRef = useRef(0);
+  const adminGestureCountRef = useRef(0);
+  const adminGestureTimerRef = useRef<number | null>(null);
+  const protectionCleanupRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     // Prime browser cache so the unlock animation video starts faster on first play.
@@ -335,7 +350,7 @@ export default function TeamDashboardPage() {
   }, [session, fetchBoxes, fetchTeam, fetchMembers]);
 
   useEffect(() => {
-    const isRoundOneUnlocked = round?.round_number === 1 && round.status === "active";
+    const isRoundOneUnlocked = round?.round_number === 1 && round?.status === "active";
     if (!isRoundOneUnlocked) {
       setShowUnlockVideo(false);
       setUnlockFlow("locked");
@@ -346,6 +361,218 @@ export default function TeamDashboardPage() {
       setUnlockFlow("unlocked");
     }
   }, [round, unlockFlow]);
+
+  useEffect(() => {
+    if (testMode) {
+      setSecurityLockActive(false);
+      SecurityManager.clearLock();
+      return;
+    }
+    const cleanupProtection = SecurityManager.initializeProtection();
+    const refreshLock = () => {
+      const state = SecurityManager.getState();
+      if (state.lockActive && state.lockEndTime) {
+        const remaining = Math.max(0, Math.ceil((state.lockEndTime - Date.now()) / 1000));
+        setSecurityLockActive(true);
+        setLockSecondsRemaining(remaining);
+      } else {
+        setSecurityLockActive(false);
+        setLockSecondsRemaining(0);
+      }
+    };
+
+    refreshLock();
+    const lockInterval = window.setInterval(() => {
+      const remaining = SecurityManager.getRemainingSeconds();
+      if (remaining <= 0) {
+        SecurityManager.clearLock();
+        setSecurityLockActive(false);
+        setLockSecondsRemaining(0);
+      } else {
+        setSecurityLockActive(true);
+        setLockSecondsRemaining(remaining);
+      }
+    }, 1000);
+
+    return () => {
+      cleanupProtection();
+      window.clearInterval(lockInterval);
+      document.documentElement.style.overflow = "";
+    };
+  }, [testMode]);
+
+  useEffect(() => {
+    document.documentElement.style.overflow = securityLockActive ? "hidden" : "";
+  }, [securityLockActive]);
+
+  useEffect(() => {
+    if (testMode) return;
+    const isRoundOneActive = round?.round_number === 1 && round?.status === "active";
+
+    const lockIfSuspicious = (reason: string) => {
+      if (!isRoundOneActive) return;
+      SecurityManager.createLock(reason);
+      setSecurityLockActive(true);
+      setSecurityMessage("Suspicious app switching detected. Please stay in the game.");
+      setShowSecurityHint(true);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        visibilityLeaveTimeRef.current = Date.now();
+        return;
+      }
+
+      if (!visibilityLeaveTimeRef.current) return;
+      const elapsed = Date.now() - visibilityLeaveTimeRef.current;
+      visibilityLeaveTimeRef.current = null;
+
+      if (elapsed > 0 && elapsed < 2500) {
+        quickSwitchCountRef.current += 1;
+        setShowSecurityHint(true);
+        if (quickSwitchCountRef.current >= 2) {
+          lockIfSuspicious("rapid visibility change");
+        } else {
+          setSecurityMessage("Rapid app switch detected. Stay focused in the browser.");
+        }
+      } else {
+        quickSwitchCountRef.current = 0;
+      }
+    };
+
+    const handleBlur = () => {
+      blurTimeRef.current = Date.now();
+    };
+
+    const handleFocus = () => {
+      if (!blurTimeRef.current) return;
+      const elapsed = Date.now() - blurTimeRef.current;
+      blurTimeRef.current = null;
+
+      if (elapsed > 0 && elapsed < 2500) {
+        quickSwitchCountRef.current += 1;
+        setShowSecurityHint(true);
+        if (quickSwitchCountRef.current >= 2) {
+          lockIfSuspicious("quick blur/focus");
+        } else {
+          setSecurityMessage("Quick app focus change detected. Avoid switching apps.");
+        }
+      } else {
+        quickSwitchCountRef.current = 0;
+      }
+    };
+
+    const handleTouchStart = (event: TouchEvent) => {
+      touchStartTimeRef.current = Date.now();
+      if (event.touches.length >= 3) {
+        const now = Date.now();
+        if (adminGestureTimerRef.current) {
+          window.clearTimeout(adminGestureTimerRef.current);
+        }
+        adminGestureCountRef.current += 1;
+        adminGestureTimerRef.current = window.setTimeout(() => {
+          adminGestureCountRef.current = 0;
+        }, 2500);
+        if (adminGestureCountRef.current >= 3) {
+          setSecurityMessage("Admin gesture recognized.");
+          setShowSecurityHint(true);
+        }
+      }
+    };
+
+    const handleTouchEnd = () => {
+      if (!touchStartTimeRef.current || !isRoundOneActive) {
+        touchStartTimeRef.current = null;
+        return;
+      }
+      const duration = Date.now() - touchStartTimeRef.current;
+      touchStartTimeRef.current = null;
+      if (duration > 10000) {
+        quickSwitchCountRef.current += 1;
+        if (quickSwitchCountRef.current >= 3) {
+          lockIfSuspicious("long touch interruption");
+        } else {
+          setSecurityMessage("Extended touch interruption detected. Please stay active.");
+          setShowSecurityHint(true);
+        }
+      }
+    };
+
+    window.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchend", handleTouchEnd, { passive: true });
+
+    return () => {
+      window.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchend", handleTouchEnd);
+      if (adminGestureTimerRef.current) {
+        window.clearTimeout(adminGestureTimerRef.current);
+      }
+    };
+  }, [round, testMode]);
+
+  useEffect(() => {
+    if (!securityLockActive) return;
+    const unlockTimer = window.setInterval(() => {
+      const remaining = SecurityManager.getRemainingSeconds();
+      if (remaining <= 0) {
+        SecurityManager.clearLock();
+        setSecurityLockActive(false);
+        setLockSecondsRemaining(0);
+        setShowSecurityHint(false);
+      } else {
+        setLockSecondsRemaining(remaining);
+      }
+    }, 1000);
+    return () => window.clearInterval(unlockTimer);
+  }, [securityLockActive]);
+
+  useEffect(() => {
+    if (securityLockActive) {
+      setSecurityMessage("Suspicious activity detected. Access temporarily locked.");
+    }
+  }, [securityLockActive]);
+
+  useEffect(() => {
+    if (securityLockActive) {
+      document.documentElement.classList.add("security-locked");
+    } else {
+      document.documentElement.classList.remove("security-locked");
+    }
+  }, [securityLockActive]);
+
+  useEffect(() => {
+    return () => {
+      document.documentElement.classList.remove("security-locked");
+    };
+  }, []);
+
+  useEffect(() => {
+    const state = SecurityManager.getState();
+    if (state.lockActive && state.lockEndTime) {
+      setSecurityLockActive(true);
+      setLockSecondsRemaining(Math.max(0, Math.ceil((state.lockEndTime - Date.now()) / 1000)));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (securityLockActive) {
+      document.body.style.touchAction = "none";
+      document.body.style.userSelect = "none";
+    } else {
+      document.body.style.touchAction = "auto";
+      document.body.style.userSelect = "auto";
+    }
+    return () => {
+      document.body.style.touchAction = "auto";
+      document.body.style.userSelect = "auto";
+    };
+  }, [securityLockActive]);
 
   const handleStartMission = async () => {
     if (!session || !revealedGame) return;
@@ -506,7 +733,23 @@ export default function TeamDashboardPage() {
   const isEliminated = Boolean(team?.eliminated_at);
 
   return (
-    <main className="page-shell space-y-6">
+    <main
+      className="page-shell space-y-6"
+      style={{
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        WebkitTouchCallout: "none",
+      }}
+    >
+      <AnimatePresence>
+        {securityLockActive && (
+          <SecurityLockOverlay
+            secondsRemaining={lockSecondsRemaining}
+            message={securityMessage}
+            showHint={showSecurityHint}
+          />
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {!hideDashboard && (
           <motion.div
@@ -687,7 +930,6 @@ export default function TeamDashboardPage() {
               Waiting for admin to start the round.
             </p>
           )}
-            
             <div className="mystery-box-scene" style={{ overflow: "hidden" }}>
               <MysteryBox
                 disabled={unlockFlow !== "unlocked"}
@@ -696,6 +938,7 @@ export default function TeamDashboardPage() {
                 isPlaying={showUnlockVideo || unlockFlow === "revealReward"}
                 gameTitle={PUBLIC_GAME_LABEL}
                 onEnded={() => {
+
                   setUnlockFlow("revealReward");
                 }}
                 onOpen={() => {
@@ -708,7 +951,7 @@ export default function TeamDashboardPage() {
                       initial={{ opacity: 0, scale: 0.9, y: 10 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       transition={{ duration: 0.7, delay: 0.8 }}
-                      className="absolute inset-x-0 bottom-6 sm:bottom-10 z-50 flex flex-col items-center justify-end pointer-events-none"
+                      className="absolute inset-x-0 bottom-3 sm:bottom-6 z-50 flex flex-col items-center justify-end pointer-events-none"
                     >
                       <button
                         type="button"

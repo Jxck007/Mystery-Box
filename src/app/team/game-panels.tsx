@@ -27,7 +27,7 @@ function shuffle<T>(array: T[], rand: () => number): T[] {
   return result;
 }
 
-// ── Pick from bank by index (keep exactly as is) ──
+// ── Pick from bank by index (unique-only, never repeats) ──
 function pickFromBankIndexed<T>(
   seed: string,
   namespace: string,
@@ -38,7 +38,9 @@ function pickFromBankIndexed<T>(
     bank.map((_, idx) => idx),
     seededRandom(`${seed}-${namespace}-order`),
   );
-  return bank[order[index % bank.length]];
+  // Clamp to last unique item instead of wrapping around
+  const safeIndex = Math.min(index, bank.length - 1);
+  return bank[order[safeIndex]];
 }
 
 export type MiniGameResult = { success: boolean; details: string };
@@ -169,7 +171,7 @@ function buildRapidQuizBank(): QuizQuestion[] {
     a: item.a,
     options: toTuple4(shuffle([...item.options], seededRandom(`rapid-fact-${i}`))),
   }));
-  return [...facts, ...capitals, ...facts, ...facts].slice(0, 140);
+  return [...facts, ...capitals];
 }
 
 const FAST_TRIVIA_RAW: QuizQuestion[] = [
@@ -418,7 +420,7 @@ function buildNumberSequenceBank(): NumberSequenceQuestion[] {
   for (let i = 0; i < fibs.length - 3; i++) {
     out.push({ sequence: [fibs[i], fibs[i + 1], fibs[i + 2]], answer: fibs[i + 3] });
   }
-  return [...out, ...out].slice(0, 140);
+  return out;
 }
 
 function buildQuickMathBank(): QuickMathQuestion[] {
@@ -458,7 +460,7 @@ function buildQuickMathBank(): QuickMathQuestion[] {
     const answer = a + b + c;
     out.push({ display: `${a} + ${b} + ${c} = ?`, answer, options: makeOptions(answer, a, b) });
   }
-  return [...out, ...out].slice(0, 140);
+  return out;
 }
 
 const EMOJI_POOL = ["🔶", "🔷", "🔺", "🔻", "🟢", "🟡", "🟠", "🔴", "🟣", "🔵"] as const;
@@ -527,7 +529,7 @@ function buildWordScrambleBank(): WordScrambleQuestion[] {
     const options = toTuple4(shuffle([word, d1, d2, d3], seededRandom(`scramble-opt-${i}`)));
     return { word, scrambled, options };
   });
-  return [...base, ...base].slice(0, 140);
+  return base;
 }
 
 function chooseBlankIndex(word: string): number {
@@ -552,7 +554,7 @@ function buildMissingLetterBank(): MissingLetterQuestion[] {
     const options = toTuple4(shuffle([correct, wrongs[0], wrongs[1], wrongs[2]], rand));
     return { word, blankIndex, options };
   });
-  return [...base, ...base].slice(0, 140);
+  return base;
 }
 
 const ARRANGE_BASE: Array<[string, string, string]> = [
@@ -593,7 +595,7 @@ function buildQuickArrangeBank(): QuickArrangeQuestion[] {
       out.push({ items, shuffled: shuffledText, options });
     }
   });
-  return [...out, ...out].slice(0, 140);
+  return out;
 }
 
 export const RAPID_QUIZ_BANK: QuizQuestion[] = buildRapidQuizBank();
@@ -1098,6 +1100,47 @@ export function QuickArrange({ seed, questionIndex, disabled, onComplete }: Mini
   );
 }
 
+// All game type keys for mixed-category rotation
+const ALL_GAME_KEYS = [
+  "rapid-quiz",
+  "fast-trivia",
+  "true-false",
+  "odd-one-out",
+  "number-sequence",
+  "quick-math",
+  "object-count",
+  "word-scramble",
+  "missing-letter",
+  "quick-arrange",
+] as const;
+
+// Track how many questions each game type has been given so far per seed,
+// so each sub-bank picks unique questions independently.
+function resolveGameTypeForIndex(seed: string, questionIndex: number): string {
+  // Create a seeded order of game types, then cycle through them
+  const order = shuffle([...ALL_GAME_KEYS], seededRandom(`${seed}-game-type-order`));
+  return order[questionIndex % order.length];
+}
+
+function renderGameType(
+  gameType: string,
+  props: MiniGameProps,
+) {
+  switch (gameType) {
+    case "rapid-quiz": return <RapidQuiz {...props} />;
+    case "fast-trivia": return <FastTrivia {...props} />;
+    case "true-false": return <TrueFalse {...props} />;
+    case "odd-one-out": return <OddOneOut {...props} />;
+    case "number-sequence": return <NumberSequence {...props} />;
+    case "quick-math": return <QuickMath {...props} />;
+    case "object-count": return <ObjectCount {...props} />;
+    case "word-scramble": return <WordScramble {...props} />;
+    case "missing-letter": return <MissingLetter {...props} />;
+    case "quick-arrange": return <QuickArrange {...props} />;
+    default: return <RapidQuiz {...props} />;
+  }
+}
+
 export default function MiniGame({
   gameType,
   seed,
@@ -1106,19 +1149,30 @@ export default function MiniGame({
   onComplete,
 }: MiniGameProps & { gameType: string }) {
   useInjectGameArtStyles();
-  switch (gameType) {
-    case "rapid-quiz": return <RapidQuiz seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
-    case "fast-trivia": return <FastTrivia seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
-    case "true-false": return <TrueFalse seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
-    case "odd-one-out": return <OddOneOut seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
-    case "number-sequence": return <NumberSequence seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
-    case "quick-math": return <QuickMath seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
-    case "object-count": return <ObjectCount seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
-    case "word-scramble": return <WordScramble seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
-    case "missing-letter": return <MissingLetter seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
-    case "quick-arrange": return <QuickArrange seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
-    default: return <RapidQuiz seed={seed} questionIndex={questionIndex} disabled={disabled} onComplete={onComplete} />;
-  }
+
+  // Rotate through all game types in a seeded order for mixed categories.
+  // Each game type gets its own sub-index so its bank picks are unique.
+  const resolvedType = useMemo(
+    () => resolveGameTypeForIndex(seed, questionIndex),
+    [seed, questionIndex],
+  );
+
+  // Count how many times this game type has appeared before this questionIndex
+  // so each sub-bank uses a unique, non-repeating index.
+  const subIndex = useMemo(() => {
+    let count = 0;
+    for (let i = 0; i < questionIndex; i++) {
+      if (resolveGameTypeForIndex(seed, i) === resolvedType) count++;
+    }
+    return count;
+  }, [seed, questionIndex, resolvedType]);
+
+  return renderGameType(resolvedType, {
+    seed,
+    questionIndex: subIndex,
+    disabled,
+    onComplete,
+  });
 }
 
 export function MiniGameRenderer({

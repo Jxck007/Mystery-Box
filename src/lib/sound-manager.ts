@@ -13,6 +13,7 @@ const SOUND_FILES = {
   Wrong2: "/music/Wrong2.mp3",
   Victory2: "/music/Victory2.mp3",
   Defeat2: "/music/Defeat2.mp3",
+  BoxOpen: "/music/Open.mp3",
   Gotin: "/music/Gotin.mp3",
   LeaderBoard: "/music/LeaderBoard.mp3",
     WrongStreak2: "/music/WrongStreak2.mp3",
