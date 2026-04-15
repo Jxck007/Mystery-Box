@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
   // Check if code is correct
   if (trimmed !== team.round2_code) {
     // Handle wrong submission with lockout progression
-    let attemptsQuery = supabase
+    const attemptsQuery = supabase
       .from("team_events")
       .select("id", { count: "exact", head: true })
       .eq("team_id", team.id)

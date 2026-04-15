@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   if (auth) return auth;
   const supabase = createAdminClient();
   const GLOBAL_START_ROUNDS = new Set([3]);
-  let { data, error } = await supabase
+  const { data, error } = await supabase
     .from("rounds")
     .select("*")
     .order("round_number", { ascending: true });
