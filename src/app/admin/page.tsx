@@ -76,7 +76,6 @@ export default function AdminDashboardPage() {
   const [actionBusy, setActionBusy] = useState<Record<string, boolean>>({});
   const [eventLogs, setEventLogs] = useState<TeamEventLog[]>([]);
   const [expandedTeamLogs, setExpandedTeamLogs] = useState<Record<string, boolean>>({});
-  const [pairBattleFocusTick, setPairBattleFocusTick] = useState(0);
 
   const getAdminHeaders = useCallback(async () => {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -434,18 +433,9 @@ export default function AdminDashboardPage() {
 
     setStatusMessage(
       roundNumber === 1
-        ? `Round 1 elimination applied. Top ${ROUND1_SURVIVOR_LIMIT} remain active. Round 2 Pair Battle setup unlocked.`
+        ? `Round 1 elimination applied. Top ${ROUND1_SURVIVOR_LIMIT} remain active.`
         : `Round 2 elimination applied. First ${ROUND2_QUALIFY_LIMIT} solved teams qualified.`,
     );
-
-    if (roundNumber === 1) {
-      setSelectedRoundNumber(2);
-      setPairBattleFocusTick((prev) => prev + 1);
-      window.setTimeout(() => {
-        document.getElementById("pair-battle-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 120);
-    }
-
     await refreshAll();
     setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
   };
@@ -573,10 +563,6 @@ export default function AdminDashboardPage() {
       null
     );
   }, [rounds, selectedRoundNumber, activeRoundNumber]);
-
-  const round2Record = useMemo(() => {
-    return rounds.find((round) => round.round_number === 2) ?? null;
-  }, [rounds]);
 
   const isSelectedRoundAvailable = useMemo(() => {
     if (!selectedRound?.round_number) return false;
@@ -1045,6 +1031,19 @@ export default function AdminDashboardPage() {
                   </button>
                 );
               })()}
+              {(() => {
+                const busyKey = "elimination-round2";
+                const busy = actionBusy[busyKey];
+                return (
+                  <button
+                    className="admin-action-button button-danger"
+                    onClick={() => handleApplyElimination(2, busyKey)}
+                    disabled={busy || round2SolvedCount === 0}
+                  >
+                    {busy ? "Syncing..." : `Apply Round 2 Cut (First ${ROUND2_QUALIFY_LIMIT})`}
+                  </button>
+                );
+              })()}
             </div>
         <div className="overflow-x-auto">
           <table className="leaderboard-table">
@@ -1118,14 +1117,12 @@ export default function AdminDashboardPage() {
           </table>
         </div>
       </div>
-      {round2Record && (
-        <div id="pair-battle-panel" data-focus-tick={pairBattleFocusTick}>
-          <PairBattleBoard
-            roundId={round2Record.id}
-            onStatusChange={setStatusMessage}
-            getAdminHeaders={getAdminHeaders}
-          />
-        </div>
+      {selectedRound && (
+        <PairBattleBoard 
+          roundId={selectedRound.id} 
+          onStatusChange={setStatusMessage} 
+          getAdminHeaders={getAdminHeaders}
+        />
       )}
           <div className="card">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

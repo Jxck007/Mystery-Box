@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 
 type MysteryBoxProps = {
@@ -11,31 +10,8 @@ type MysteryBoxProps = {
 };
 
 export function MysteryBox({ disabled, isClicked, videoPreviewSrc, onOpen }: MysteryBoxProps) {
-  const previewRef = useRef<HTMLVideoElement | null>(null);
-
-  useEffect(() => {
-    const video = previewRef.current;
-    if (!video || !videoPreviewSrc) return;
-
-    const primeFirstFrame = () => {
-      try {
-        video.currentTime = 0.05;
-        video.pause();
-      } catch {
-        // Keep default poster frame behavior when seeking is unavailable.
-      }
-    };
-
-    video.addEventListener("loadeddata", primeFirstFrame);
-    video.load();
-
-    return () => {
-      video.removeEventListener("loadeddata", primeFirstFrame);
-    };
-  }, [videoPreviewSrc]);
-
   return (
-    <div className="relative mx-auto flex min-h-[240px] w-full max-w-md items-center justify-center">
+    <div className="relative mx-auto flex min-h-60 w-full max-w-md items-center justify-center">
       <motion.div
         className="pointer-events-none absolute h-44 w-44 rounded-full bg-cyan-300/35 blur-3xl"
         animate={{ opacity: disabled ? 0.2 : [0.35, 0.75, 0.35], scale: disabled ? 1 : [1, 1.2, 1] }}
@@ -56,12 +32,13 @@ export function MysteryBox({ disabled, isClicked, videoPreviewSrc, onOpen }: Mys
         {videoPreviewSrc && (
           <div className="absolute inset-2 overflow-hidden rounded-2xl border border-cyan-200/40">
             <video
-              ref={previewRef}
               className="h-full w-full object-cover opacity-65 transition-opacity duration-300 group-hover:opacity-80"
               src={videoPreviewSrc}
-              preload="metadata"
+              preload="auto"
               muted
               playsInline
+              autoPlay
+              loop
             />
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.05)_0%,rgba(0,0,0,0.55)_100%)]" />
           </div>

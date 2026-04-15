@@ -47,28 +47,6 @@ export async function POST(request: NextRequest) {
     }, { status: 400 });
   }
 
-  const allTeamIds: string[] = [];
-  pairings.forEach((pairing) => {
-    if (pairing.team_a_id) allTeamIds.push(pairing.team_a_id);
-    if (pairing.team_b_id) allTeamIds.push(pairing.team_b_id);
-  });
-
-  const { data: codeStates, error: codeStatesError } = await supabase
-    .from("teams")
-    .select("id, round2_code")
-    .in("id", allTeamIds);
-
-  if (codeStatesError) {
-    return NextResponse.json({ error: codeStatesError.message }, { status: 500 });
-  }
-
-  const missingCodeCount = (codeStates ?? []).filter((team) => !team.round2_code).length;
-  if (missingCodeCount > 0) {
-    return NextResponse.json({
-      error: `${missingCodeCount} teams are missing pair codes. Assign all pair codes before starting.`,
-    }, { status: 400 });
-  }
-
   // Update all pairings to "in_progress" with current timestamp
   const now = new Date().toISOString();
   const { data: updated, error: updateError } = await supabase
@@ -81,18 +59,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
+  // Enable pair battle on all teams in these pairings
+  const allTeamIds: string[] = [];
+  pairings.forEach((p) => {
+    if (p.team_a_id) allTeamIds.push(p.team_a_id);
+    if (p.team_b_id) allTeamIds.push(p.team_b_id);
+  });
+
   const { error: enableError } = await supabase
     .from("teams")
-    .update({
-      pair_battle_enabled: true,
-      round2_status: "pending",
-      round2_solved_at: null,
-      round2_lock_until: null,
-      eliminated_at: null,
-      eliminated_round: null,
-      eliminated_position: null,
-      is_active: true,
-    })
+    .update({ pair_battle_enabled: true })
     .in("id", allTeamIds);
 
   if (enableError) {

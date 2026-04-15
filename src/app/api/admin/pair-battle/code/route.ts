@@ -36,16 +36,7 @@ export async function POST(request: NextRequest) {
 
   const { error: updateError } = await supabase
     .from("teams")
-    .update({
-      round2_code: code,
-      round2_lock_until: null,
-      round2_solved_at: null,
-      round2_status: "pending",
-      eliminated_at: null,
-      eliminated_round: null,
-      eliminated_position: null,
-      is_active: true,
-    })
+    .update({ round2_code: code, round2_lock_until: null })
     .in("id", teamIds);
 
   if (updateError) {

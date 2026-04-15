@@ -19,7 +19,6 @@ export function SoundToggle() {
         setEnabled(nextValue);
         setSoundEnabled(nextValue);
       }}
-      aria-pressed={enabled}
       aria-label={enabled ? "Disable sound" : "Enable sound"}
       title={enabled ? "Disable sound" : "Enable sound"}
     >

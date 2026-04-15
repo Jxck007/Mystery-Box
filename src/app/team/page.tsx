@@ -69,7 +69,7 @@ type SessionData = {
   isLeader: boolean;
 };
 
-type UnlockFlow = "locked" | "unlocked" | "preparing" | "playingVideo" | "revealReward";
+type UnlockFlow = "locked" | "unlocked" | "clicked" | "transition_out" | "video" | "revealed";
 
 const UNLOCK_VIDEO_SRC = "/unlock-sequence.mp4";
 const UNLOCK_RULES = [
@@ -334,15 +334,32 @@ export default function TeamDashboardPage() {
   useEffect(() => {
     const isRoundOneUnlocked = round?.round_number === 1 && round.status === "active";
     if (!isRoundOneUnlocked) {
-      setShowUnlockVideo(false);
-      setUnlockFlow("locked");
+      if (unlockFlow !== "video" && unlockFlow !== "revealed") {
+        setUnlockFlow("locked");
+      }
+      return;
+    }
+
+    if (currentOpen && currentGame) {
+      setRevealedGame(currentGame);
+      setRevealedOpenRecord(currentOpen);
+      if (unlockFlow !== "video" && dismissedRevealOpenId !== currentOpen.id) {
+        setUnlockFlow("revealed");
+      }
+      return;
+    }
+
+    if (unlockFlow === "revealed") {
+      setRevealedGame(null);
+      setRevealedOpenRecord(null);
+      setUnlockFlow("unlocked");
       return;
     }
 
     if (unlockFlow === "locked") {
       setUnlockFlow("unlocked");
     }
-  }, [round, unlockFlow]);
+  }, [currentGame, currentOpen, round, unlockFlow, dismissedRevealOpenId]);
 
   const handleStartMission = async () => {
     if (!session || !revealedGame) return;
@@ -420,7 +437,7 @@ export default function TeamDashboardPage() {
       return;
     }
 
-  setUnlockFlow("preparing");
+    setUnlockFlow("clicked");
     setModalError("");
     playSound("box_open");
     setLoading(true);
@@ -467,8 +484,10 @@ export default function TeamDashboardPage() {
     setDismissedRevealOpenId(null);
     setRevealedGame(openResult.game);
     setRevealedOpenRecord(openResult.open);
-    setUnlockFlow("playingVideo");
+    setUnlockFlow("transition_out");
+    await wait(180);
     setShowUnlockVideo(true);
+    setUnlockFlow("video");
 
     setLoading(false);
   };
@@ -492,7 +511,7 @@ export default function TeamDashboardPage() {
     return null;
   }, [round]);
 
-  const cinematicTransitionActive = unlockFlow === "preparing" || unlockFlow === "playingVideo";
+  const cinematicTransitionActive = unlockFlow === "transition_out";
   const hideDashboard = cinematicTransitionActive;
   const showRound2Prompt = round?.status === "active" && round?.round_number === 2;
   const showRound3Prompt = round?.status === "active" && round?.round_number === 3;
@@ -500,18 +519,7 @@ export default function TeamDashboardPage() {
 
   return (
     <main className="page-shell space-y-6">
-      <UnlockVideoOverlay
-        open={showUnlockVideo}
-        videoSrc={UNLOCK_VIDEO_SRC}
-        ruleBook={UNLOCK_RULES}
-        onEnded={() => {
-          setShowUnlockVideo(false);
-          setUnlockFlow("revealReward");
-        }}
-        onPlaybackStart={() => setUnlockFlow("playingVideo")}
-      />
-
-      {unlockFlow === "revealReward" && revealedGame && (
+      {unlockFlow === "revealed" && revealedGame && (
         <RewardReveal
           gameTitle={revealedGame.game_title ?? "Mystery Challenge"}
           gameDescription={revealedGame.game_description}
@@ -520,8 +528,6 @@ export default function TeamDashboardPage() {
           onClose={() => {
             setDismissedRevealOpenId(revealedOpenRecord?.id ?? null);
             setUnlockFlow("unlocked");
-            setRevealedGame(null);
-            setRevealedOpenRecord(null);
           }}
           busy={briefingBusy || !revealedOpenRecord}
         />
@@ -708,14 +714,27 @@ export default function TeamDashboardPage() {
             </p>
           )}
           <div className="mystery-box-scene">
+            {showUnlockVideo || unlockFlow === "video" ? (
+              <div className="mx-auto w-full max-w-3xl space-y-4">
+                <UnlockVideoOverlay
+                  open={showUnlockVideo}
+                  videoSrc={UNLOCK_VIDEO_SRC}
+                  onEnded={() => {
+                    setShowUnlockVideo(false);
+                    setUnlockFlow("revealed");
+                  }}
+                />
+              </div>
+            ) : (
               <MysteryBox
                 disabled={unlockFlow !== "unlocked"}
-                isClicked={unlockFlow !== "unlocked"}
+                isClicked={unlockFlow === "clicked"}
                 videoPreviewSrc={UNLOCK_VIDEO_SRC}
                 onOpen={() => {
                   void handleBoxClick();
                 }}
               />
+            )}
           </div>
         </div>
             )}
