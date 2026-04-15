@@ -25,10 +25,17 @@ export function UnlockVideoOverlay({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [started, setStarted] = useState(false);
   const onEndedRef = useRef(onEnded);
+  const onPlaybackStartRef = useRef(onPlaybackStart);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     onEndedRef.current = onEnded;
-  }, [onEnded]);
+    onPlaybackStartRef.current = onPlaybackStart;
+  }, [onEnded, onPlaybackStart]);
 
   useEffect(() => {
     if (!open || !videoRef.current) return;
@@ -45,14 +52,14 @@ export function UnlockVideoOverlay({
         video.muted = false;
         await video.play();
         setStarted(true);
-        onPlaybackStart?.();
+        onPlaybackStartRef.current?.();
       } catch {
         if (cancelled) return;
         try {
           video.muted = true;
           await video.play();
           setStarted(true);
-          onPlaybackStart?.();
+          onPlaybackStartRef.current?.();
         } catch {
           onEndedRef.current();
         }
@@ -65,7 +72,7 @@ export function UnlockVideoOverlay({
       cancelled = true;
       video.pause();
     };
-  }, [open, videoSrc, onPlaybackStart]);
+  }, [open, videoSrc]);
 
   useEffect(() => {
     if (!showPreview || open || !videoRef.current) return;
@@ -140,36 +147,37 @@ export function UnlockVideoOverlay({
     );
   }
 
-  return (
+  const overlayContent = (
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 p-3 sm:p-6"
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-0 m-0"
+          style={{ backgroundColor: "rgba(0,0,0,0.95)" }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.45 }}
+          transition={{ duration: 0.8 }}
         >
-          <div className="relative w-full max-w-4xl overflow-hidden rounded-2xl border border-white/20 bg-black shadow-2xl">
-            <div className="aspect-video w-full">
-              <video
-                ref={videoRef}
-                className="h-full w-full object-cover"
-                src={videoSrc}
-                playsInline
-                autoPlay
-                preload="auto"
-                controls={true}
-                muted
-                disablePictureInPicture
-                controlsList="nodownload nofullscreen"
-                onEnded={onEnded}
-                onError={onEnded}
-              />
-            </div>
+          <div className="relative w-[90vw] max-w-[1200px] aspect-video max-h-[85vh] rounded-xl overflow-hidden bg-black shadow-[0_0_50px_rgba(0,0,0,0.5)]">      
+            <video
+              ref={videoRef}
+              className="w-full h-full object-contain pointer-events-none"        
+              src={videoSrc}
+              playsInline
+              autoPlay
+              preload="auto"
+              controls={false}
+              muted={false}
+              onEnded={onEnded}
+              onError={(e) => {
+                console.error("Video play error:", e);
+                // Instead of instantly closing on error, give the user a moment or let them interact if they want
+                // or fall back.
+              }}
+            />
             {!started && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/65">
-                <span className="font-mono text-xs uppercase tracking-[0.2em] text-white/80">Loading video...</span>
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/80 z-[10]">
+                <span className="font-mono text-sm uppercase tracking-[0.2em] text-white">Loading video...</span>
               </div>
             )}
           </div>
@@ -177,4 +185,7 @@ export function UnlockVideoOverlay({
       )}
     </AnimatePresence>
   );
+
+  if (!mounted) return null;
+  return overlayContent;
 }

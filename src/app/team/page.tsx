@@ -500,6 +500,17 @@ export default function TeamDashboardPage() {
 
   return (
     <main className="page-shell space-y-6">
+      <UnlockVideoOverlay
+        open={showUnlockVideo}
+        videoSrc={UNLOCK_VIDEO_SRC}
+        ruleBook={UNLOCK_RULES}
+        onEnded={() => {
+          setShowUnlockVideo(false);
+          setUnlockFlow("revealReward");
+        }}
+        onPlaybackStart={() => setUnlockFlow("playingVideo")}
+      />
+
       {unlockFlow === "revealReward" && revealedGame && (
         <RewardReveal
           gameTitle={revealedGame.game_title ?? "Mystery Challenge"}
@@ -697,20 +708,6 @@ export default function TeamDashboardPage() {
             </p>
           )}
           <div className="mystery-box-scene">
-            {showUnlockVideo ? (
-              <div className="mx-auto w-full max-w-3xl space-y-4">
-                <UnlockVideoOverlay
-                  open={showUnlockVideo}
-                  videoSrc={UNLOCK_VIDEO_SRC}
-                  ruleBook={UNLOCK_RULES}
-                  onEnded={() => {
-                    setShowUnlockVideo(false);
-                    setUnlockFlow("revealReward");
-                  }}
-                  onPlaybackStart={() => setUnlockFlow("playingVideo")}
-                />
-              </div>
-            ) : (
               <MysteryBox
                 disabled={unlockFlow !== "unlocked"}
                 isClicked={unlockFlow !== "unlocked"}
@@ -719,7 +716,6 @@ export default function TeamDashboardPage() {
                   void handleBoxClick();
                 }}
               />
-            )}
           </div>
         </div>
             )}
