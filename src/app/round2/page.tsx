@@ -64,6 +64,8 @@ export default function Round2Page() {
   const [startPlayed, setStartPlayed] = useState(false);
   const resultPlayedRef = useRef(false);
   const redirectTimeoutRef = useRef<number | null>(null);
+  const countdownIntervalRef = useRef<number | null>(null);
+  const [redirectCountdown, setRedirectCountdown] = useState(0);
   const testMode = isTestModeEnabled();
 
   const playRound2Result = useCallback((qualified: boolean) => {
@@ -72,12 +74,34 @@ export default function Round2Page() {
     window.sessionStorage.setItem("round2_result", qualified ? "win_r2" : "lose_r2");
     window.sessionStorage.setItem("leaderboard_sound_played", "0");
 
+    // Start countdown
+    setRedirectCountdown(10);
+    if (countdownIntervalRef.current) {
+      window.clearInterval(countdownIntervalRef.current);
+    }
+    countdownIntervalRef.current = window.setInterval(() => {
+      setRedirectCountdown(prev => {
+        if (prev <= 1) {
+          if (countdownIntervalRef.current) {
+            window.clearInterval(countdownIntervalRef.current);
+            countdownIntervalRef.current = null;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
     if (redirectTimeoutRef.current) {
       window.clearTimeout(redirectTimeoutRef.current);
     }
 
     redirectTimeoutRef.current = window.setTimeout(() => {
       redirectTimeoutRef.current = null;
+      if (countdownIntervalRef.current) {
+        window.clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
       router.replace("/leaderboard");
     }, 10000);
   }, [router]);
@@ -274,6 +298,18 @@ export default function Round2Page() {
     router.replace("/leaderboard");
   }, [router, team?.round2_solved_at, team?.round2_status]);
 
+  // Cleanup countdown interval on unmount
+  useEffect(() => {
+    return () => {
+      if (countdownIntervalRef.current) {
+        window.clearInterval(countdownIntervalRef.current);
+      }
+      if (redirectTimeoutRef.current) {
+        window.clearTimeout(redirectTimeoutRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     return () => {
       if (redirectTimeoutRef.current) {
@@ -394,7 +430,7 @@ export default function Round2Page() {
                         setRound2Code("");
                       } else {
                         playRound2Result(true);
-                        setRound2Status("Code accepted in test mode. Battle won.");
+                        // Status will be updated by the countdown display
                       }
                       return;
                     }
@@ -455,7 +491,12 @@ export default function Round2Page() {
                 </button>
               </div>
 
-              {round2Status && <p className="text-sm text-[var(--text-muted)]">{round2Status}</p>}
+              {redirectCountdown > 0 && (
+                <p className="text-sm text-green-400 font-semibold animate-pulse">
+                  You cracked the code! Redirecting to the Leaderboard in {redirectCountdown}s...
+                </p>
+              )}
+              {round2Status && redirectCountdown === 0 && <p className="text-sm text-[var(--text-muted)]">{round2Status}</p>}
             </div>
           )}
 
