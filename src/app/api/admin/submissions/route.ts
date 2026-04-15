@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase-admin";
 const VALID_STATUSES = ["pending", "approved", "rejected"];
 
 export async function GET(request: Request) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth) return auth;
   const url = new URL(request.url);
   const status = url.searchParams.get("status");

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { isTestModeEnabled } from "@/lib/test-mode";
-import { playSound } from "@/lib/sound-manager";
+import { playSound, playSoundAndWait } from "@/lib/sound-manager";
 
 type LeaderboardEntry = {
   id: string;
@@ -19,11 +19,43 @@ export default function LeaderboardPage() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkedSession, setCheckedSession] = useState(false);
+  const [round1Outcome, setRound1Outcome] = useState<"selected" | "eliminated" | null>(null);
   const testMode = isTestModeEnabled();
 
   useEffect(() => {
-    playSound("leaderboard_open");
-  }, []);
+    let cancelled = false;
+
+    const run = async () => {
+      const pendingResultSound = sessionStorage.getItem("post_round2_result_sound");
+      if (pendingResultSound === "win_r2" || pendingResultSound === "lose_r2") {
+        void playSound(pendingResultSound);
+        sessionStorage.removeItem("post_round2_result_sound");
+        return;
+      }
+
+      const postRound1Sound = sessionStorage.getItem("post_round1_result_sound");
+      const postRound1Outcome = sessionStorage.getItem("post_round1_outcome");
+      if (postRound1Outcome === "selected" || postRound1Outcome === "eliminated") {
+        setRound1Outcome(postRound1Outcome);
+        if (postRound1Sound === "win_r1" || postRound1Sound === "lose_r1") {
+          sessionStorage.removeItem("post_round1_result_sound");
+          await playSoundAndWait(postRound1Sound, 12000);
+        }
+        if (!cancelled && postRound1Outcome === "selected") {
+          router.replace("/team");
+        }
+        return;
+      }
+
+      playSound("leaderboard_open");
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const fetchLeaderboard = useCallback(async () => {
     setLoading(true);
@@ -133,6 +165,30 @@ export default function LeaderboardPage() {
           <span className="label text-[var(--accent)]">STREAMING</span>
         </div>
       </div>
+
+      {round1Outcome === "selected" && (
+        <div className="banner paused">
+          Congrats on passing Round 1. Auto redirecting to dashboard...
+        </div>
+      )}
+
+      {round1Outcome === "eliminated" && (
+        <div className="banner ended">
+          Thanks for playing.
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button className="button-muted" onClick={() => router.push("/")}>CUT TO HOME</button>
+            <button
+              className="button-danger"
+              onClick={async () => {
+                await supabaseBrowser.auth.signOut();
+                router.replace("/");
+              }}
+            >
+              CUT SESSION
+            </button>
+          </div>
+        </div>
+      )}
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
           <div>

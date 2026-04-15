@@ -2,10 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { GAME_CONFIGS } from "./game-panels";
 import { getTestRoundNumber, isTestModeEnabled, setTestRoundNumber } from "@/lib/test-mode";
 import { playSound } from "@/lib/sound-manager";
+import { MysteryBox } from "./components/mystery-box";
+import { UnlockVideoOverlay } from "./components/unlock-video-overlay";
+import { RewardReveal } from "./components/reward-reveal";
 
 type GameRecord = {
   id: string;
@@ -65,6 +69,19 @@ type SessionData = {
   isLeader: boolean;
 };
 
+type UnlockFlow = "locked" | "unlocked" | "clicked" | "transition_out" | "video" | "revealed";
+
+const UNLOCK_VIDEO_SRC = "/unlock-sequence.mp4";
+const UNLOCK_RULES = [
+  "This game is capped at 180 seconds.",
+  "Question count always starts from 1.",
+  "Each question is randomized and timeout counts as skip (-3).",
+];
+
+const wait = (ms: number) => new Promise<void>((resolve) => {
+  window.setTimeout(resolve, ms);
+});
+
 export default function TeamDashboardPage() {
   const router = useRouter();
   const [session, setSession] = useState<SessionData | null>(null);
@@ -78,23 +95,25 @@ export default function TeamDashboardPage() {
   const lastEventIdRef = useRef<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [opening, setOpening] = useState(false);
   const [modalError, setModalError] = useState("");
   const [removedNotice, setRemovedNotice] = useState("");
   const [members, setMembers] = useState<
     { id: string; display_name: string; joined_at: string }[]
   >([]);
-  const [briefingOpen, setBriefingOpen] = useState(false);
-  const [briefingGame, setBriefingGame] = useState<GameRecord | null>(null);
-  const [briefingOpenRecord, setBriefingOpenRecord] = useState<BoxOpen | null>(null);
+  const [revealedGame, setRevealedGame] = useState<GameRecord | null>(null);
+  const [revealedOpenRecord, setRevealedOpenRecord] = useState<BoxOpen | null>(null);
   const [briefingBusy, setBriefingBusy] = useState(false);
   const [testRound, setTestRound] = useState(1);
-  const [isOpening, setIsOpening] = useState(false);
-  const [isOpened, setIsOpened] = useState(false);
-  const [pendingBriefing, setPendingBriefing] = useState<{ game: GameRecord | null; open: BoxOpen | null } | null>(null);
-  const boxOpenTimerRef = useRef<number | null>(null);
-  const round1ResultPlayedRef = useRef(false);
-  const testMode = isTestModeEnabled();
+  const [unlockFlow, setUnlockFlow] = useState<UnlockFlow>("locked");
+  const [showUnlockVideo, setShowUnlockVideo] = useState(false);
+  const [dismissedRevealOpenId, setDismissedRevealOpenId] = useState<string | null>(null);
+  const [testMode, setTestMode] = useState(false);
+  const [testModeReady, setTestModeReady] = useState(false);
+
+  useEffect(() => {
+    setTestMode(isTestModeEnabled());
+    setTestModeReady(true);
+  }, []);
 
   const fetchBoxes = useCallback(async () => {
     if (!session) return;
@@ -190,6 +209,7 @@ export default function TeamDashboardPage() {
   }, [session, testMode]);
 
   useEffect(() => {
+    if (!testModeReady) return;
     const id = window.setTimeout(() => {
       if (testMode) {
         localStorage.setItem("team_id", "test-team");
@@ -232,9 +252,10 @@ export default function TeamDashboardPage() {
       });
     }, 0);
     return () => window.clearTimeout(id);
-  }, [router, testMode]);
+  }, [router, testMode, testModeReady]);
 
   useEffect(() => {
+    if (!testModeReady) return;
     if (testMode) {
       setAuthEmail("test.mode@local");
       return;
@@ -244,7 +265,7 @@ export default function TeamDashboardPage() {
       setAuthEmail(data.user?.email ?? null);
     };
     readAuth();
-  }, [testMode]);
+  }, [testMode, testModeReady]);
 
   useEffect(() => {
     if (!session) {
@@ -257,15 +278,6 @@ export default function TeamDashboardPage() {
     }, 0);
     return () => window.clearTimeout(id);
   }, [session, fetchBoxes, fetchTeam, fetchMembers]);
-
-  useEffect(() => {
-    if (!round || round.status !== "active") return;
-    if (round.round_number === 2) {
-      router.replace("/round2");
-    } else if (round.round_number === 3) {
-      router.replace("/leaderboard");
-    }
-  }, [round, router]);
 
   useEffect(() => {
     if (events.length === 0) return;
@@ -305,48 +317,37 @@ export default function TeamDashboardPage() {
   }, [session, fetchBoxes, fetchTeam, fetchMembers]);
 
   useEffect(() => {
-    return () => {
-      if (boxOpenTimerRef.current) {
-        window.clearTimeout(boxOpenTimerRef.current);
+    const isRoundOneUnlocked = round?.round_number === 1 && round.status === "active";
+    if (!isRoundOneUnlocked) {
+      if (unlockFlow !== "video" && unlockFlow !== "revealed") {
+        setUnlockFlow("locked");
       }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (currentOpen || testMode) {
-      setIsOpened(Boolean(currentOpen));
-    }
-  }, [currentOpen, testMode]);
-
-  useEffect(() => {
-    if (!isOpened || !pendingBriefing) return;
-    openBriefing(pendingBriefing.game, pendingBriefing.open);
-    setPendingBriefing(null);
-  }, [isOpened, pendingBriefing]);
-
-  useEffect(() => {
-    if (round?.round_number !== 1 || round.status !== "ended") {
-      round1ResultPlayedRef.current = false;
       return;
     }
-    if (round1ResultPlayedRef.current) return;
 
-    const eliminatedByEvent = events.some((event) => event.event_type === "elimination");
-    const eliminatedRound1 = team?.eliminated_round === 1 || Boolean(team?.eliminated_at) || eliminatedByEvent;
+    if (currentOpen && currentGame) {
+      setRevealedGame(currentGame);
+      setRevealedOpenRecord(currentOpen);
+      if (unlockFlow !== "video" && dismissedRevealOpenId !== currentOpen.id) {
+        setUnlockFlow("revealed");
+      }
+      return;
+    }
 
-    round1ResultPlayedRef.current = true;
-    playSound(eliminatedRound1 ? "lose_r1" : "win_r1");
-  }, [events, round, team?.eliminated_at, team?.eliminated_round]);
+    if (unlockFlow === "revealed") {
+      setRevealedGame(null);
+      setRevealedOpenRecord(null);
+      setUnlockFlow("unlocked");
+      return;
+    }
 
-  const openBriefing = (game: GameRecord | null, openRecord: BoxOpen | null) => {
-    if (!game || !openRecord) return;
-    setBriefingGame(game);
-    setBriefingOpenRecord(openRecord);
-    setBriefingOpen(true);
-  };
+    if (unlockFlow === "locked") {
+      setUnlockFlow("unlocked");
+    }
+  }, [currentGame, currentOpen, round, unlockFlow, dismissedRevealOpenId]);
 
   const handleStartMission = async () => {
-    if (!session || !briefingGame) return;
+    if (!session || !revealedGame) return;
     setBriefingBusy(true);
 
     playSound("start_r1");
@@ -360,8 +361,8 @@ export default function TeamDashboardPage() {
     }
 
     setBriefingBusy(false);
-    setBriefingOpen(false);
-    router.push(`/game/${briefingGame.id}`);
+    setUnlockFlow("unlocked");
+    router.push(`/game/${revealedGame.id}`);
   };
 
   useEffect(() => {
@@ -414,73 +415,65 @@ export default function TeamDashboardPage() {
     if (!session) {
       return;
     }
-    if (isOpening || isOpened || currentOpen) {
+    if (unlockFlow !== "unlocked" || currentOpen) {
       return;
     }
     if (round && round.status !== "active") {
       return;
     }
 
-    setIsOpening(true);
-    setOpening(true);
+    setUnlockFlow("clicked");
     setModalError("");
-
     playSound("box_open");
+    setLoading(true);
 
-    if (boxOpenTimerRef.current) {
-      window.clearTimeout(boxOpenTimerRef.current);
-    }
+    const openRequest = async (): Promise<{ game: GameRecord | null; open: BoxOpen | null } | null> => {
+      if (testMode) {
+        const activeTestRound = getTestRoundNumber();
+        const selectedConfig = GAME_CONFIGS[Math.floor(Math.random() * GAME_CONFIGS.length)];
+        const testGame = {
+          id: `test-box-${selectedConfig.key}-${Date.now()}`,
+          game_title: selectedConfig.title,
+          game_description: "Answer fast and build your streak. Wrong answers reduce your score input.",
+          game_type: selectedConfig.key,
+          points_value: 100,
+          round_number: activeTestRound,
+        };
+        const testOpen = { id: `test-open-${Date.now()}`, box_id: "test-box", status: "pending" as const };
+        return { game: testGame, open: testOpen };
+      }
 
-    boxOpenTimerRef.current = window.setTimeout(() => {
-      setIsOpening(false);
-      setIsOpened(true);
-      setOpening(false);
-    }, 2000);
-
-    if (testMode) {
-      const activeTestRound = getTestRoundNumber();
-      const selectedConfig = GAME_CONFIGS[Math.floor(Math.random() * GAME_CONFIGS.length)];
-      const testGame = {
-        id: `test-box-${selectedConfig.key}-${Date.now()}`,
-        game_title: selectedConfig.title,
-        game_description: "Answer fast and build your streak. Wrong answers reduce your score input.",
-        game_type: selectedConfig.key,
-        points_value: 100,
-        round_number: activeTestRound,
-      };
-      const testOpen = { id: `test-open-${Date.now()}`, box_id: "test-box", status: "pending" as const };
-      setCurrentGame({
-        ...testGame,
+      const response = await fetch("/api/boxes/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: session.teamId }),
       });
-      setCurrentOpen(testOpen);
-      setPendingBriefing({ game: testGame, open: testOpen });
+      const payload = await response.json();
+      if (!response.ok) {
+        setModalError(payload.error ?? "Unable to open game");
+        return null;
+      }
+      return { game: payload.game ?? null, open: payload.open ?? null };
+    };
+
+    const [openResult] = await Promise.all([openRequest(), wait(950)]);
+
+    if (!openResult?.game || !openResult.open) {
+      setUnlockFlow("unlocked");
+      setLoading(false);
       return;
     }
 
-    setLoading(true);
-    const response = await fetch("/api/boxes/open", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamId: session.teamId }),
-    });
-    const payload = await response.json();
-    if (response.ok) {
-      const nextGame = payload.game ?? null;
-      const nextOpen = payload.open ?? null;
-      setCurrentGame(nextGame);
-      setCurrentOpen(nextOpen);
-      setPendingBriefing({ game: nextGame, open: nextOpen });
-      setModalError("");
-    } else {
-      setModalError(payload.error ?? "Unable to open game");
-      if (boxOpenTimerRef.current) {
-        window.clearTimeout(boxOpenTimerRef.current);
-        boxOpenTimerRef.current = null;
-      }
-      setIsOpening(false);
-      setIsOpened(false);
-      setOpening(false);
-    }
+    setCurrentGame(openResult.game);
+    setCurrentOpen(openResult.open);
+    setDismissedRevealOpenId(null);
+    setRevealedGame(openResult.game);
+    setRevealedOpenRecord(openResult.open);
+    setUnlockFlow("transition_out");
+    await wait(650);
+    setShowUnlockVideo(true);
+    setUnlockFlow("video");
+
     setLoading(false);
   };
 
@@ -503,30 +496,60 @@ export default function TeamDashboardPage() {
     return null;
   }, [round]);
 
-  const boxStateClass =
-    round?.status !== "active"
-      ? "locked"
-      : isOpening
-      ? "opening"
-      : isOpened || currentOpen
-      ? "opened"
-      : "idle";
+  const cinematicTransitionActive = unlockFlow === "transition_out" || unlockFlow === "video";
+  const hideDashboard = cinematicTransitionActive;
+  const showRound2Prompt = round?.status === "active" && round?.round_number === 2;
+  const showRound3Prompt = round?.status === "active" && round?.round_number === 3;
+  const isEliminated = Boolean(team?.eliminated_at);
 
   return (
     <main className="page-shell space-y-6">
-      {edgeToast && (
-        <div className="edge-toast" role="status" aria-live="polite">
-          {edgeToast.message}
-        </div>
-      )}
-      <div className="space-y-2">
-        <p className="section-tag">TEAM_OPERATOR_CHANNEL</p>
-        <h1 className="font-headline text-5xl md:text-6xl font-black uppercase" style={{ letterSpacing: "-0.04em" }}>
-          MISSION / CONTROL / HUB
-        </h1>
-      </div>
+      <UnlockVideoOverlay
+        open={showUnlockVideo}
+        videoSrc={UNLOCK_VIDEO_SRC}
+        onEnded={() => {
+          setShowUnlockVideo(false);
+          setUnlockFlow("revealed");
+        }}
+      />
 
-      {testMode && (
+      {unlockFlow === "revealed" && revealedGame && (
+        <RewardReveal
+          gameTitle={revealedGame.game_title ?? "Mystery Challenge"}
+          gameDescription={revealedGame.game_description}
+          rules={UNLOCK_RULES}
+          onBegin={handleStartMission}
+          onClose={() => {
+            setDismissedRevealOpenId(revealedOpenRecord?.id ?? null);
+            setUnlockFlow("unlocked");
+          }}
+          busy={briefingBusy || !revealedOpenRecord}
+        />
+      )}
+
+      <AnimatePresence>
+        {!hideDashboard && (
+          <motion.div
+            key="team-dashboard-content"
+            className="space-y-6"
+            initial={{ opacity: 1, y: 0 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -48, filter: "blur(8px)" }}
+            transition={{ duration: 0.55, ease: "easeInOut" }}
+          >
+            {edgeToast && (
+              <div className="edge-toast" role="status" aria-live="polite">
+                {edgeToast.message}
+              </div>
+            )}
+            <div className="space-y-2">
+              <p className="section-tag">TEAM_OPERATOR_CHANNEL</p>
+              <h1 className="font-headline text-5xl md:text-6xl font-black uppercase" style={{ letterSpacing: "-0.04em" }}>
+                MISSION / CONTROL / HUB
+              </h1>
+            </div>
+
+        {testMode && (
         <div className="card space-y-3">
           <p className="label">TEST MODE CONTROLS</p>
           <div className="flex flex-wrap gap-2">
@@ -562,9 +585,9 @@ export default function TeamDashboardPage() {
             </button>
           </div>
         </div>
-      )}
+        )}
 
-      <div className="card space-y-4" style={{ borderTop: "3px solid var(--accent)" }}>
+        <div className="card space-y-4" style={{ borderTop: "3px solid var(--accent)" }}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="label text-(--accent)">TOTAL SCORE</p>
@@ -613,6 +636,39 @@ export default function TeamDashboardPage() {
 
         {removedNotice && <div className="banner ended">{removedNotice}</div>}
 
+        {isEliminated && (
+          <div className="banner ended">
+            Your team has been eliminated. You can still view final standings.
+            <div className="mt-3">
+              <button className="button-secondary" onClick={() => router.push("/leaderboard")}>
+                VIEW LEADERBOARD
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showRound2Prompt && (
+          <div className="banner paused">
+            Round 2 is active. Continue when your team is ready.
+            <div className="mt-3">
+              <button className="button-primary" onClick={() => router.push("/round2")}>
+                GO TO ROUND 2
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showRound3Prompt && (
+          <div className="banner paused">
+            Round 3 is active. Continue from leaderboard view.
+            <div className="mt-3">
+              <button className="button-primary" onClick={() => router.push("/leaderboard")}>
+                GO TO LEADERBOARD
+              </button>
+            </div>
+          </div>
+        )}
+
         {roundBanner}
 
         {modalError && <div className="banner ended">{modalError}</div>}
@@ -625,17 +681,17 @@ export default function TeamDashboardPage() {
               : "Waiting for admin to start a round"}
           </p>
         </div>
-      </div>
+        </div>
 
-      {!round?.round_number && (
+        {!round?.round_number && (
         <div className="card items-center text-center py-12" style={{ background: "var(--bg-container)" }}>
           <span className="inline-block w-2 h-2 bg-[var(--accent)] mb-2" style={{ animation: "pulse-dot 1.2s ease-in-out infinite" }} />
           <p className="label">STANDBY_MODE</p>
           <p className="font-mono text-sm text-[var(--text-muted)]">WAITING FOR ADMIN TO INITIALIZE A ROUND</p>
         </div>
-      )}
+        )}
 
-      {round?.round_number === 1 && (
+            {round?.round_number === 1 && round?.status === "active" && (
         <div className="card space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -646,56 +702,25 @@ export default function TeamDashboardPage() {
               <p className="text-sm text-[var(--text-muted)]">REFRESHING BOXES...</p>
             )}
           </div>
-          {boxStateClass === "locked" && (
+          {unlockFlow === "locked" && (
             <p className="text-sm text-[var(--text-muted)] text-center">
               Waiting for admin to start the round.
             </p>
           )}
           <div className="mystery-box-scene">
-            <div
-              className={`mb2-box ${boxStateClass === "opening" ? "shake glow" : ""} ${boxStateClass === "opened" ? "open" : ""} ${boxStateClass === "locked" ? "locked" : ""}`}
-              onClick={handleBoxClick}
-              role="button"
-              aria-label="Open mystery box"
-            >
-              <div className="mb2-lid" />
-              <div className="mb2-reward">🎉 +{currentGame?.points_value ?? 50} pts</div>
-            </div>
+            <MysteryBox
+              disabled={unlockFlow !== "unlocked"}
+              isClicked={unlockFlow === "clicked"}
+              onOpen={() => {
+                void handleBoxClick();
+              }}
+            />
           </div>
         </div>
-      )}
-
-      {briefingOpen && briefingGame && (
-        <div className="briefing-overlay" role="dialog" aria-modal="true" aria-label="Mission briefing">
-          <div className="briefing-modal card space-y-4">
-            <p className="section-tag">MISSION BRIEFING</p>
-            <h2 className="font-headline text-3xl font-black uppercase briefing-title-tight">
-              {briefingGame.game_title ?? "MYSTERY CHALLENGE"}
-            </h2>
-            <p className="text-sm text-(--text-muted)">
-              {briefingGame.game_description ?? "Read the rules, then start the mission timer when your team is ready."}
-            </p>
-            <ul className="rule-list">
-              <li>This game is capped at 180 seconds.</li>
-              <li>Question count always starts from 1.</li>
-              <li>Each question is randomized and timeout counts as skip (-3).</li>
-            </ul>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="button-primary"
-                disabled={briefingBusy || !briefingOpenRecord}
-                onClick={handleStartMission}
-              >
-                {briefingBusy ? "Starting..." : "START GAME"}
-              </button>
-              <button type="button" className="button-secondary" onClick={() => setBriefingOpen(false)}>
-                CLOSE
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

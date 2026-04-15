@@ -11,7 +11,22 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const supabase = createAdminClient();
+  let supabase;
+  try {
+    supabase = createAdminClient();
+  } catch (error) {
+    console.error("[players/me] Admin client init failed", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Server database configuration error",
+      },
+      { status: 500 },
+    );
+  }
+
   const { data: player, error } = await supabase
     .from("players")
     .select("id, display_name, team:team_id(id, name, leader_name)")
@@ -19,12 +34,13 @@ export async function GET(request: NextRequest) {
     .maybeSingle();
 
   if (error) {
+    console.error("[players/me] Query failed", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   if (!player || !player.team) {
-    return NextResponse.json({ error: "No team found" }, { status: 404 });
+    return NextResponse.json({ team: null, hasTeam: false });
   }
 
-  return NextResponse.json(player);
+  return NextResponse.json({ ...player, hasTeam: true });
 }

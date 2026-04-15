@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { isTestModeEnabled } from "@/lib/test-mode";
 
@@ -38,7 +39,8 @@ function NavLinkButton({ href, label, className }: NavLinkButtonProps) {
         const response = await fetch("/api/players/me", {
           headers: { Authorization: `Bearer ${access.token}` },
         });
-        if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.team) {
           router.push("/create-team");
           return;
         }
@@ -56,11 +58,44 @@ function NavLinkButton({ href, label, className }: NavLinkButtonProps) {
 }
 
 export function HeaderNavLinks() {
+  const [isAuthed, setIsAuthed] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    if (isTestModeEnabled()) {
+      setIsAuthed(true);
+      setAuthChecked(true);
+      return;
+    }
+
+    let active = true;
+    supabaseBrowser.auth.getSession().then(({ data }) => {
+      if (active) {
+        setIsAuthed(Boolean(data.session));
+        setAuthChecked(true);
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
+      if (active) {
+        setIsAuthed(Boolean(session));
+        setAuthChecked(true);
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
   return (
-    <div className="nav-row">
-      <NavLinkButton href="/" label="HOME" className="button-muted text-xs" />
-      <NavLinkButton href="/team" label="TEAM" className="button-muted text-xs" />
-      <NavLinkButton href="/leaderboard" label="RANK" className="button-muted text-xs" />
+    <div className="nav-row top-nav-row">
+      <NavLinkButton href="/" label="HOME" className="top-nav-link" />
+      {authChecked && isAuthed && <NavLinkButton href="/team" label="TEAM" className="top-nav-link" />}
+      {authChecked && isAuthed && <NavLinkButton href="/leaderboard" label="LEADERBOARD" className="top-nav-link" />}
     </div>
   );
 }

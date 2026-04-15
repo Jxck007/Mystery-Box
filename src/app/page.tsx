@@ -42,21 +42,22 @@ export default function HomePage() {
       const response = await fetch("/api/players/me", {
         headers: { Authorization: `Bearer ${data.session.access_token}` },
       });
-      setHasTeam(response.ok);
+      const payload = await response.json().catch(() => null);
+      setHasTeam(Boolean(response.ok && payload?.team));
     };
     check();
   }, [unlockChecked, unlocked]);
 
   if (!unlockChecked || !unlocked) {
     return (
-      <main className="page-shell min-h-screen flex items-center justify-center" style={{ background: "radial-gradient(circle at 50% 20%, rgba(180,255,57,0.12), transparent 55%), #070a06" }}>
-        <section className="card w-full max-w-md space-y-4" style={{ border: "1px solid rgba(180,255,57,0.35)", boxShadow: "0 0 30px rgba(180,255,57,0.12)" }}>
+      <main className="page-shell min-h-screen flex items-center justify-center lock-shell">
+        <section className="card w-full max-w-md space-y-4 lock-card">
           <p className="section-tag">SITE_LOCKED</p>
-          <h1 className="font-headline text-3xl font-black uppercase" style={{ letterSpacing: "-0.03em" }}>
+          <h1 className="font-headline text-3xl font-black uppercase title-tight">
             ACCESS LOCK
           </h1>
           <p className="text-sm text-(--text-muted)">
-            This site is temporarily password protected.
+            AUTHORIZATION REQUIRED. ENTER ACCESS KEY.
           </p>
           <form
             className="space-y-3"
@@ -85,10 +86,10 @@ export default function HomePage() {
               required
             />
             <button type="submit" className="button-primary w-full">
-              Unlock
+              BEGIN
             </button>
           </form>
-          {unlockError && <p className="text-sm" style={{ color: "var(--error)" }}>{unlockError}</p>}
+          {unlockError && <p className="text-sm text-(--error)">INVALID ACCESS KEY.</p>}
         </section>
       </main>
     );
@@ -100,24 +101,23 @@ export default function HomePage() {
         <div className="space-y-3">
           <p className="section-tag">ACCESS_PORTAL_INITIALIZED</p>
           <h1
-            className="font-headline text-5xl md:text-7xl font-black uppercase"
-            style={{ letterSpacing: "-0.04em", lineHeight: 0.9 }}
+            className="font-headline text-5xl md:text-7xl font-black uppercase home-hero-title"
           >
-            SELECT YOUR ENTRY 
+            SELECT ACCESS CHANNEL
           </h1>
-          <p className="text-sm md:text-base text-[var(--text-muted)] max-w-2xl">
-            Mission control for teams, secure login, and live event operations.
+          <p className="text-sm md:text-base text-(--text-muted) max-w-2xl">
+            COMMAND INTERFACE FOR TEAM OPS, LIVE ROUNDS, AND SECURED ACCESS.
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
           <div className="entry-panel md:col-span-7">
-            <span className="material-symbols-outlined text-3xl text-[var(--accent)]">groups</span>
+            <span className="material-symbols-outlined text-3xl text-(--accent)">groups</span>
             <p className="label">ID_TYPE: MULTI_USER</p>
             <h2 className="font-headline text-3xl md:text-4xl font-black tracking-tight">
               PARTICIPANT ENTRY
             </h2>
-            <p className="text-sm text-[var(--text-muted)]">
-              Initialize your team journey, join the active round flow, and complete each mission step with synchronized scoring.
+            <p className="text-sm text-(--text-muted)">
+              INITIALIZE UNIT ACCESS, ENTER ACTIVE ROUND FLOW, AND EXECUTE OBJECTIVES.
             </p>
             {!isAuthed && !testMode && (
               <Link
@@ -125,17 +125,17 @@ export default function HomePage() {
                 className="button-primary w-full sm:w-auto text-center"
                 onClick={() => playSound("button_press")}
               >
-                START ACCESS FLOW
+                BEGIN ACCESS FLOW
               </Link>
             )}
             {(isAuthed && hasTeam) || testMode ? (
               <Link href="/team" className="button-primary w-full sm:w-auto text-center" onClick={() => playSound("button_press")}>
-                GO TO TEAM CONSOLE
+                OPEN TEAM CONSOLE
               </Link>
             ) : null}
             {isAuthed && !hasTeam && !testMode && (
               <Link href="/create-team" className="button-primary w-full sm:w-auto text-center" onClick={() => playSound("button_press")}>
-                CREATE YOUR TEAM
+                INITIALIZE TEAM UNIT
               </Link>
             )}
           </div>
@@ -175,7 +175,7 @@ export default function HomePage() {
                 DISABLE TEST MODE
               </button>
             )}
-            {testMode && <span className="label text-[var(--accent)]">TEST MODE ACTIVE (AUTH BYPASS)</span>}
+            {testMode && <span className="label text-(--accent)">TEST MODE ACTIVE (AUTH BYPASS)</span>}
           </div>
         </div>
       </section>

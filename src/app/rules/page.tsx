@@ -4,16 +4,16 @@ export default function RulesPage() {
   return (
     <main className="page-shell min-h-screen space-y-8">
       <section className="space-y-3">
-        <p className="section-tag">EVENT_PROTOCOL</p>
+        <p className="section-tag">SYSTEM PROTOCOL</p>
         <h1 className="font-headline text-6xl md:text-8xl font-black uppercase leading-[0.85]" style={{ letterSpacing: "-0.04em" }}>
-          MYSTERY BOX INNOVATION RULES
+          MISSION BRIEFING
         </h1>
       </section>
 
       <section className="grid grid-cols-1 md:grid-cols-12 gap-6">
         <div className="md:col-span-3">
           <p className="label">SECTION 01</p>
-          <p className="font-headline text-3xl font-black uppercase">PHASE 1</p>
+          <p className="font-headline text-3xl font-black uppercase">ROUND 1</p>
         </div>
         <div className="md:col-span-9 card" style={{ borderLeft: "3px solid var(--accent)" }}>
           <p className="label">MYSTERY BOX</p>
@@ -26,7 +26,7 @@ export default function RulesPage() {
       <section className="grid grid-cols-1 md:grid-cols-12 gap-6">
         <div className="md:col-span-3">
           <p className="label">SECTION 02</p>
-          <p className="font-headline text-3xl font-black uppercase">PHASE 2</p>
+          <p className="font-headline text-3xl font-black uppercase">ROUND 2</p>
         </div>
         <div className="md:col-span-9 card" style={{ borderLeft: "3px solid var(--accent)" }}>
           <p className="label">CRACK THE CODE</p>
@@ -62,7 +62,7 @@ export default function RulesPage() {
       <section className="grid grid-cols-1 md:grid-cols-12 gap-6">
         <div className="md:col-span-3">
           <p className="label">SECTION 03</p>
-          <p className="font-headline text-3xl font-black uppercase">TEAM CONSTRAINTS</p>
+          <p className="font-headline text-3xl font-black uppercase">UNIT CONSTRAINTS</p>
         </div>
         <div className="md:col-span-9 grid grid-cols-2 gap-4">
           <div className="card items-center justify-center py-8">

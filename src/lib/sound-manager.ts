@@ -16,6 +16,7 @@ const SOUND_FILES = {
   BoxOpen: "/music/BoxOpen.mp3",
   Gotin: "/music/Gotin.mp3",
   LeaderBoard: "/music/LeaderBoard.mp3",
+    WrongStreak2: "/music/WrongStreak2.mp3",
 } as const;
 
 type SoundName = keyof typeof SOUND_FILES;
@@ -44,13 +45,14 @@ const EVENT_SOUND_MAP = {
   auth_success: "Gotin",
   team_created: "Create",
   leaderboard_open: "LeaderBoard",
+    wrong_streak_r2: "WrongStreak2",
 } as const satisfies Record<string, SoundName>;
 
 export type SoundEventName = keyof typeof EVENT_SOUND_MAP | "bootstrap" | "reset_streak";
 
 const HIGH_EVENTS = new Set<SoundEventName>(["win_r1", "lose_r1", "win_r2", "lose_r2"]);
 const MEDIUM_EVENTS = new Set<SoundEventName>(["start_r1", "start_r2", "box_open", "auth_success", "team_created", "leaderboard_open"]);
-const LOW_EVENTS = new Set<SoundEventName>(["button_press", "correct_r1", "wrong_r1", "correct_r2", "wrong_r2", "streak", "wrong_streak"]);
+const LOW_EVENTS = new Set<SoundEventName>(["button_press", "correct_r1", "wrong_r1", "correct_r2", "wrong_r2", "streak", "wrong_streak", "wrong_streak_r2"]);
 
 class SoundManager {
   private readonly sounds = new Map<SoundName, HTMLAudioElement>();
@@ -116,12 +118,56 @@ class SoundManager {
       this.playWithRules(eventName);
       if (this.wrongStreak >= 3 && !this.wrongStreakPlayed) {
         this.wrongStreakPlayed = true;
-        window.setTimeout(() => this.playWithRules("wrong_streak"), 80);
+          window.setTimeout(() => this.playWithRules("wrong_streak_r2"), 80);
       }
       return;
     }
 
     this.playWithRules(eventName);
+  }
+
+  async playSoundAndWait(eventName: SoundEventName, maxWaitMs = 7000) {
+    if (typeof window === "undefined") return;
+
+    this.ensureInitialized();
+
+    if (eventName === "bootstrap" || eventName === "reset_streak") {
+      this.playSound(eventName);
+      return;
+    }
+
+    this.playSound(eventName);
+    const soundName = EVENT_SOUND_MAP[eventName];
+    const audio = this.getAudio(soundName);
+
+    if (audio.paused) {
+      return;
+    }
+
+    const durationMs = Number.isFinite(audio.duration) && audio.duration > 0
+      ? Math.ceil(audio.duration * 1000)
+      : 0;
+    const waitMs = Math.max(300, Math.min(maxWaitMs, durationMs > 0 ? durationMs + 120 : maxWaitMs));
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        audio.removeEventListener("ended", finish);
+        audio.removeEventListener("error", finish);
+        window.clearTimeout(timeoutId);
+        resolve();
+      };
+
+      const timeoutId = window.setTimeout(finish, waitMs);
+      audio.addEventListener("ended", finish);
+      audio.addEventListener("error", finish);
+
+      if (audio.paused || audio.ended) {
+        finish();
+      }
+    });
   }
 
   private playWithRules(eventName: Exclude<SoundEventName, "bootstrap" | "reset_streak">) {
@@ -210,4 +256,8 @@ const soundManager = new SoundManager();
 
 export const playSound = (eventName: SoundEventName) => {
   soundManager.playSound(eventName);
+};
+
+export const playSoundAndWait = async (eventName: SoundEventName, maxWaitMs?: number) => {
+  await soundManager.playSoundAndWait(eventName, maxWaitMs);
 };

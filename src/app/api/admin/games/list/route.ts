@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/app/api/admin/_auth";
 
 export async function GET(request: Request) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth) return auth;
   const url = new URL(request.url);
   const roundNumber = Number(url.searchParams.get("roundNumber"));

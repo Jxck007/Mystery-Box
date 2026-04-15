@@ -39,7 +39,6 @@ export default function GamePage() {
   const [round, setRound] = useState<RoundRecord | null>(null);
   const [open, setOpen] = useState<BoxOpen | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
-  const [questionTimeLeft, setQuestionTimeLeft] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -53,9 +52,55 @@ export default function GamePage() {
   const answeredRef = useRef(false);
   const streakRef = useRef(0);
   const leavePenaltyRef = useRef(false);
-  const timeoutDispatchRef = useRef<number | null>(null);
-  const questionCycleRef = useRef(0);
   const testMode = isTestModeEnabled();
+
+  const progressStorageKey = useMemo(() => {
+    if (!teamId || !boxId) return null;
+    return `game-progress:${teamId}:${boxId}`;
+  }, [teamId, boxId]);
+
+  const clearProgressSnapshot = () => {
+    if (!progressStorageKey) return;
+    localStorage.removeItem(progressStorageKey);
+  };
+
+  const restoreProgressSnapshot = (openId?: string | null, gameId?: string | null) => {
+    if (!progressStorageKey || !openId || !gameId) return false;
+    const raw = localStorage.getItem(progressStorageKey);
+    if (!raw) return false;
+
+    try {
+      const parsed = JSON.parse(raw) as {
+        openId?: string;
+        gameId?: string;
+        questionIndex?: number;
+        correctCount?: number;
+        scoreInput?: number;
+        streakCount?: number;
+        questionSeedBase?: string;
+      };
+
+      if (parsed.openId !== openId || parsed.gameId !== gameId) {
+        return false;
+      }
+
+      setQuestionIndex(typeof parsed.questionIndex === "number" ? parsed.questionIndex : 0);
+      setCorrectCount(typeof parsed.correctCount === "number" ? parsed.correctCount : 0);
+      setScoreInput(typeof parsed.scoreInput === "number" ? parsed.scoreInput : 0);
+      setStreakCount(typeof parsed.streakCount === "number" ? parsed.streakCount : 0);
+      setQuestionSeedBase(
+        typeof parsed.questionSeedBase === "string" && parsed.questionSeedBase
+          ? parsed.questionSeedBase
+          : `${Date.now()}-${Math.random()}`,
+      );
+      setFeedback(null);
+      submittedRef.current = false;
+      answeredRef.current = false;
+      return true;
+    } catch {
+      return false;
+    }
+  };
   const inferredTestConfig = useMemo(() => {
     const match = GAME_CONFIGS.find((config) => boxId.includes(config.key));
     return match ?? GAME_CONFIGS[0];
@@ -108,8 +153,6 @@ export default function GamePage() {
     [game?.game_title, resolvedGameKey],
   );
 
-  const questionDuration = 10;
-
   useEffect(() => {
     streakRef.current = streakCount;
   }, [streakCount]);
@@ -117,10 +160,6 @@ export default function GamePage() {
   const handleAnswer = (result: { success: boolean; details: string }) => {
     if (answeredRef.current) return;
     answeredRef.current = true;
-    if (timeoutDispatchRef.current !== null) {
-      window.clearTimeout(timeoutDispatchRef.current);
-      timeoutDispatchRef.current = null;
-    }
     if (result.success) {
       playSound("correct_r1");
       const nextStreak = streakRef.current + 1;
@@ -138,9 +177,7 @@ export default function GamePage() {
       setFeedback(
         result.details === "skipped"
           ? "Skipped -3"
-          : result.details === "timeout"
-            ? "Time out -3"
-            : "Wrong -3",
+          : "Wrong -3",
       );
     }
     setQuestionIndex((prev) => prev + 1);
@@ -165,8 +202,10 @@ export default function GamePage() {
   useEffect(() => {
     if (!teamId) return;
     if (testMode) {
+      const testOpenId = "test-open";
+      const testGameId = boxId || "test-box";
       setGame({
-        id: boxId || "test-box",
+        id: testGameId,
         game_title: inferredTestConfig.title,
         game_description: "Test mode challenge prompt.",
         game_type: inferredTestConfig.key,
@@ -179,16 +218,18 @@ export default function GamePage() {
         remaining_seconds: GAME_CAP_SECONDS,
         round_number: 1,
       });
-      setOpen({ id: "test-open", status: "pending" });
-      setQuestionIndex(0);
-      setCorrectCount(0);
-      setScoreInput(0);
-      setStreakCount(0);
-      setQuestionTimeLeft(null);
-      setQuestionSeedBase(`${Date.now()}-${Math.random()}`);
-      setFeedback(null);
-      submittedRef.current = false;
-      answeredRef.current = false;
+      setOpen({ id: testOpenId, status: "pending" });
+      const restored = restoreProgressSnapshot(testOpenId, testGameId);
+      if (!restored) {
+        setQuestionIndex(0);
+        setCorrectCount(0);
+        setScoreInput(0);
+        setStreakCount(0);
+        setQuestionSeedBase(`${Date.now()}-${Math.random()}`);
+        setFeedback(null);
+        submittedRef.current = false;
+        answeredRef.current = false;
+      }
       return;
     }
     const load = async () => {
@@ -198,27 +239,59 @@ export default function GamePage() {
       const payload = await response.json();
       if (!response.ok) {
         setError(payload.error ?? "Unable to load game");
+        clearProgressSnapshot();
         return;
       }
       if (!payload.game || payload.game.id !== boxId) {
         setError("This game is no longer active.");
+        clearProgressSnapshot();
         return;
       }
       setGame(payload.game);
       setRound(payload.round ?? null);
       setOpen(payload.open ?? null);
-      setQuestionIndex(0);
-      setCorrectCount(0);
-      setScoreInput(0);
-      setStreakCount(0);
-      setQuestionTimeLeft(null);
-      setQuestionSeedBase(`${Date.now()}-${Math.random()}`);
-      setFeedback(null);
-      submittedRef.current = false;
-      answeredRef.current = false;
+      const restored = restoreProgressSnapshot(payload.open?.id, payload.game.id);
+      if (!restored) {
+        setQuestionIndex(0);
+        setCorrectCount(0);
+        setScoreInput(0);
+        setStreakCount(0);
+        setQuestionSeedBase(`${Date.now()}-${Math.random()}`);
+        setFeedback(null);
+        submittedRef.current = false;
+        answeredRef.current = false;
+      }
     };
     load();
-  }, [teamId, boxId, testMode, questionDuration, inferredTestConfig.key, inferredTestConfig.title]);
+  }, [teamId, boxId, testMode, inferredTestConfig.key, inferredTestConfig.title, progressStorageKey]);
+
+  useEffect(() => {
+    if (!progressStorageKey || !open?.id || !game?.id) return;
+    if (round?.status !== "active" || open.status !== "pending") return;
+    localStorage.setItem(
+      progressStorageKey,
+      JSON.stringify({
+        openId: open.id,
+        gameId: game.id,
+        questionIndex,
+        correctCount,
+        scoreInput,
+        streakCount,
+        questionSeedBase,
+      }),
+    );
+  }, [
+    progressStorageKey,
+    open?.id,
+    open?.status,
+    game?.id,
+    round?.status,
+    questionIndex,
+    correctCount,
+    scoreInput,
+    streakCount,
+    questionSeedBase,
+  ]);
 
   useEffect(() => {
     playSound("reset_streak");
@@ -226,49 +299,8 @@ export default function GamePage() {
 
   useEffect(() => {
     if (round?.status !== "active" || open?.status !== "pending") return;
-    questionCycleRef.current += 1;
-    if (timeoutDispatchRef.current !== null) {
-      window.clearTimeout(timeoutDispatchRef.current);
-      timeoutDispatchRef.current = null;
-    }
-    setQuestionTimeLeft(questionDuration);
     answeredRef.current = false;
-  }, [questionIndex, questionDuration, round?.status, open?.id, open?.status]);
-
-  useEffect(() => {
-    if (round?.status !== "active" || open?.status !== "pending") return;
-    if (submitting || answeredRef.current) return;
-    if (questionTimeLeft === null) return;
-
-    const id = window.setInterval(() => {
-      setQuestionTimeLeft((prev) => {
-        const current = prev ?? questionDuration;
-        const next = Math.max(0, current - 1);
-
-        if (next === 0 && current > 0 && !answeredRef.current) {
-          const cycleAtTimeout = questionCycleRef.current;
-          answeredRef.current = true;
-          timeoutDispatchRef.current = window.setTimeout(() => {
-            timeoutDispatchRef.current = null;
-            if (questionCycleRef.current !== cycleAtTimeout) return;
-            handleAnswer({ success: false, details: "timeout" });
-          }, 0);
-        }
-
-        return next;
-      });
-    }, 1000);
-
-    return () => window.clearInterval(id);
-  }, [questionIndex, questionTimeLeft, questionDuration, round?.status, open?.status, open?.id, submitting]);
-
-  useEffect(() => {
-    return () => {
-      if (timeoutDispatchRef.current !== null) {
-        window.clearTimeout(timeoutDispatchRef.current);
-      }
-    };
-  }, []);
+  }, [questionIndex, round?.status, open?.id, open?.status]);
 
   useEffect(() => {
     if (!round?.duration_seconds) {
@@ -320,6 +352,7 @@ export default function GamePage() {
         setSubmitting(false);
         return;
       }
+      clearProgressSnapshot();
       setSubmitting(false);
       router.replace("/team");
     };
@@ -328,30 +361,67 @@ export default function GamePage() {
 
   useEffect(() => {
     if (!teamId) return;
-    const handleVisibility = async () => {
-      if (document.visibilityState === "hidden" && !leavePenaltyRef.current) {
-        leavePenaltyRef.current = true;
-        setLeaveWarning(true);
-        await fetch(`/api/teams/${teamId}/penalty`, { method: "POST" }).catch(() => null);
-        router.replace("/team");
-      }
-    };
-    const handleBeforeUnload = () => {
+    const penaltyUrl = `/api/teams/${teamId}/penalty`;
+
+    const dispatchPenalty = (reason: string) => {
       if (leavePenaltyRef.current) return;
       leavePenaltyRef.current = true;
       setLeaveWarning(true);
-      void fetch(`/api/teams/${teamId}/penalty`, { method: "POST" }).catch(() => null);
+      if (progressStorageKey) {
+        localStorage.removeItem(progressStorageKey);
+      }
+
+      const payload = JSON.stringify({ reason });
+      if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+        try {
+          navigator.sendBeacon(penaltyUrl, new Blob([payload], { type: "application/json" }));
+        } catch {
+          // Ignore beacon transport failures and still attempt fetch.
+        }
+      }
+
+      void fetch(penaltyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        keepalive: true,
+        cache: "no-store",
+      }).catch(() => null);
+
+      router.replace("/team");
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        dispatchPenalty("visibility_hidden");
+      }
+    };
+    const handleBlur = () => dispatchPenalty("window_blur");
+    const handlePageHide = () => dispatchPenalty("pagehide");
+    const handleBeforeUnload = () => dispatchPenalty("beforeunload");
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "PrintScreen") {
+        dispatchPenalty("printscreen");
+      }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "s") {
+        dispatchPenalty("screenshot_shortcut");
+      }
     };
 
     document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("blur", handleVisibility);
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("pagehide", handlePageHide);
     window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("keydown", handleKeyDown);
+
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("blur", handleVisibility);
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [teamId, router]);
+  }, [teamId, router, progressStorageKey]);
 
   if (error) {
     return (
@@ -360,7 +430,7 @@ export default function GamePage() {
           <p className="label">Game status</p>
           <p className="text-sm text-red-400">{error}</p>
           <button className="button-primary" onClick={() => router.push("/team")}>
-            Back to team hub
+            RETURN TO CONSOLE
           </button>
         </div>
       </main>
@@ -377,7 +447,7 @@ export default function GamePage() {
       <header className="card flex-row items-start justify-between gap-4">
         <div className="space-y-2">
           <button className="button-muted text-xs" onClick={() => router.push("/team")}>
-            ← BACK
+            ← RETURN
           </button>
           <p className="label">BOX_MISSION_01</p>
           <h1 className="font-headline text-4xl font-black uppercase" style={{ letterSpacing: "-0.04em" }}>
@@ -393,9 +463,6 @@ export default function GamePage() {
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.15em" }}>
             Q: {questionIndex + 1}
           </span>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: (questionTimeLeft ?? questionDuration) <= 2 ? "var(--error)" : "var(--text-muted)", letterSpacing: "0.15em" }}>
-            THIS Q: {questionTimeLeft ?? questionDuration}s
-          </span>
           <div className="timer-bar">
             <div className="timer-fill" style={{ width: `${progressPercent}%` }} />
           </div>
@@ -406,7 +473,7 @@ export default function GamePage() {
         <div className="section-tag">GAME_TYPE: {miniGameConfig?.key ?? "QUIZ"}</div>
         <div className="game-warning">
           <p className="text-sm text-[var(--text-muted)]">
-            Points stack on this round. Each game is capped at 180 seconds and timeout counts as skip (-3).
+            MISSION TIMER: 180s HARD CAP. SKIP APPLIES -3 PENALTY.
           </p>
         </div>
 
@@ -450,7 +517,7 @@ export default function GamePage() {
               handleAnswer({ success: false, details: "skipped" });
             }}
           >
-            SKIP (-3 pts)
+            SKIP INPUT (-3)
           </button>
         )}
 

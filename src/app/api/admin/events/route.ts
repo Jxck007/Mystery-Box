@@ -3,7 +3,7 @@ import { requireAdmin } from "@/app/api/admin/_auth";
 import { createAdminClient } from "@/lib/supabase-admin";
 
 export async function GET(request: Request) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth) return auth;
 
   const supabase = createAdminClient();

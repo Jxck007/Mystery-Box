@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { requireUser } from "@/lib/supabase-server";
 
-const SHORT_LOCKOUT_SECONDS = 10;
-const LONG_LOCKOUT_SECONDS = 30;
-const SHORT_LOCKOUT_ATTEMPTS = 3;
-const QUALIFY_LIMIT = 4;
+const ATTEMPTS_PER_LOCK_STAGE = 3;
+const BASE_LOCKOUT_SECONDS = 10;
+const LOCKOUT_STAGE_INCREMENT_SECONDS = 20;
+const QUALIFY_LIMIT = 6;
 
 export async function POST(request: NextRequest) {
   const auth = await requireUser(request);
@@ -89,54 +89,84 @@ export async function POST(request: NextRequest) {
 
     const { count } = await attemptsQuery;
     const nextAttempt = (count ?? 0) + 1;
-    const lockSeconds =
-      nextAttempt <= SHORT_LOCKOUT_ATTEMPTS
-        ? SHORT_LOCKOUT_SECONDS
-        : LONG_LOCKOUT_SECONDS;
+    const shouldLock = nextAttempt % ATTEMPTS_PER_LOCK_STAGE === 0;
+    const lockStage = Math.floor(nextAttempt / ATTEMPTS_PER_LOCK_STAGE);
+    const lockSeconds = shouldLock
+      ? BASE_LOCKOUT_SECONDS + (lockStage - 1) * LOCKOUT_STAGE_INCREMENT_SECONDS
+      : 0;
 
-    const lockUntil = new Date(Date.now() + lockSeconds * 1000).toISOString();
-
-    await supabase
-      .from("teams")
-      .update({ round2_lock_until: lockUntil })
-      .eq("id", team.id);
+    if (shouldLock) {
+      const lockUntil = new Date(Date.now() + lockSeconds * 1000).toISOString();
+      await supabase
+        .from("teams")
+        .update({ round2_lock_until: lockUntil })
+        .eq("id", team.id);
+    }
 
     await supabase.from("team_events").insert({
       team_id: team.id,
       event_type: "round2_attempt",
-      message: `Wrong round 2 code attempt ${nextAttempt}. Locked for ${lockSeconds}s.`,
+      message: shouldLock
+        ? `Wrong round 2 code attempt ${nextAttempt}. Locked for ${lockSeconds}s.`
+        : `Wrong round 2 code attempt ${nextAttempt}.`,
     });
 
     return NextResponse.json(
-      {
-        error: `Wrong code. Locked for ${lockSeconds}s.`,
-        attempt: nextAttempt,
-        lockSeconds,
-      },
+      shouldLock
+        ? {
+            error: `Wrong code. Locked for ${lockSeconds}s.`,
+            attempt: nextAttempt,
+            lockSeconds,
+          }
+        : {
+            error: `Wrong code. ${ATTEMPTS_PER_LOCK_STAGE - (nextAttempt % ATTEMPTS_PER_LOCK_STAGE)} more wrong attempt(s) until lock.`,
+            attempt: nextAttempt,
+          },
       { status: 400 },
     );
   }
 
-  const { data: solvedTeams } = await supabase
+  const solvedAtIso = new Date().toISOString();
+
+  const { error: markSolvedError } = await supabase
+    .from("teams")
+    .update({
+      round2_solved_at: solvedAtIso,
+    })
+    .eq("id", team.id);
+
+  if (markSolvedError) {
+    return NextResponse.json({ error: markSolvedError.message }, { status: 500 });
+  }
+
+  const { data: solvedTeams, error: solvedTeamsError } = await supabase
     .from("teams")
     .select("id")
     .not("round2_solved_at", "is", null)
-    .order("round2_solved_at", { ascending: true });
+    .order("round2_solved_at", { ascending: true })
+    .order("created_at", { ascending: true });
 
-  const position = (solvedTeams?.length ?? 0) + 1;
-  const isQualified = position <= QUALIFY_LIMIT;
+  if (solvedTeamsError) {
+    return NextResponse.json({ error: solvedTeamsError.message }, { status: 500 });
+  }
 
-  await supabase
+  const position = (solvedTeams ?? []).findIndex((entry) => entry.id === team.id) + 1;
+  const isQualified = position > 0 && position <= QUALIFY_LIMIT;
+
+  const { error: finalizeStatusError } = await supabase
     .from("teams")
     .update({
-      round2_solved_at: new Date().toISOString(),
       round2_status: isQualified ? "qualified" : "eliminated",
       is_active: isQualified,
-      eliminated_at: isQualified ? null : new Date().toISOString(),
+      eliminated_at: isQualified ? null : solvedAtIso,
       eliminated_round: isQualified ? null : 2,
-      eliminated_position: position,
+      eliminated_position: position || null,
     })
     .eq("id", team.id);
+
+  if (finalizeStatusError) {
+    return NextResponse.json({ error: finalizeStatusError.message }, { status: 500 });
+  }
 
   await supabase.from("team_events").insert({
     team_id: team.id,

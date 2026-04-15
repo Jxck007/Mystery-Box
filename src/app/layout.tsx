@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Inter, Space_Grotesk } from "next/font/google";
+import { Inter, Orbitron, Rajdhani } from "next/font/google";
 import { HeaderNavLinks } from "./nav-links";
 import { SoundBootstrap } from "./sound-bootstrap";
 import "./globals.css";
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const rajdhani = Rajdhani({
+  variable: "--font-rajdhani",
   subsets: ["latin"],
-  weight: ["100", "200", "300", "400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const inter = Inter({
@@ -16,10 +16,10 @@ const inter = Inter({
   weight: ["300", "400", "500", "600", "700"],
 });
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
+const orbitron = Orbitron({
+  variable: "--font-orbitron",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["500", "600", "700", "800", "900"],
 });
 
 export const metadata: Metadata = {
@@ -44,7 +44,8 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${inter.variable} ${geistMono.variable} ${spaceGrotesk.variable} antialiased`}
+        suppressHydrationWarning
+        className={`${inter.variable} ${rajdhani.variable} ${orbitron.variable} antialiased`}
       >
         <SoundBootstrap />
         <header className="app-header">

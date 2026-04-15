@@ -107,7 +107,7 @@ function AuthContent() {
       setConfirmPassword("");
       setShowPassword(false);
       setShowConfirmPassword(false);
-      setStatus("Account created. Confirm your email, then sign in to continue.");
+      setStatus("OBJECTIVE COMPLETE. VERIFY EMAIL, THEN RE-INITIALIZE SESSION.");
       setLoading(false);
       return;
     } else {
@@ -132,8 +132,9 @@ function AuthContent() {
     const response = await fetch("/api/players/me", {
       headers: { Authorization: `Bearer ${data.session.access_token}` },
     });
+    const payload = await response.json().catch(() => null);
     setLoading(false);
-    if (response.ok) {
+    if (response.ok && payload?.team) {
       playSound("auth_success");
       router.replace("/team");
       return;
@@ -153,7 +154,7 @@ function AuthContent() {
         <h1 className="font-headline text-4xl md:text-5xl font-black uppercase leading-tight auth-title-tight">
           {mode === "signup" ? "CREATE / YOUR / PLAYER / ACCOUNT" : "SIGN IN / TO / MISSION / CONTROL"}
         </h1>
-        <p className="label auth-center-label">use email and password</p>
+          <p className="label auth-center-label">SECURE CREDENTIAL CHANNEL</p>
         <div className="auth-flow-switch" aria-label="Authentication mode">
           <button
             type="button"
@@ -271,7 +272,7 @@ function AuthContent() {
           )}
           {status && <p className="text-sm text-(--text-muted)">{status}</p>}
           <button className="button-primary w-full" type="submit" disabled={loading}>
-            {loading ? "Securing your session..." : mode === "signup" ? "Create account" : "Enter dashboard"}
+            {loading ? "INITIALIZING SESSION..." : mode === "signup" ? "INITIALIZE ACCOUNT" : "BEGIN SESSION"}
           </button>
           <button
             type="button"
@@ -279,7 +280,7 @@ function AuthContent() {
             onClick={handleGoogleSignIn}
             disabled={oauthLoading || loading}
           >
-            {oauthLoading ? "Redirecting to Google..." : "Continue with Google"}
+            {oauthLoading ? "ROUTING TO GOOGLE..." : "GOOGLE AUTH LINK"}
           </button>
         </form>
         <Link href="/" className="label text-(--text-muted)">

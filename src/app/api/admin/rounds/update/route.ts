@@ -3,15 +3,15 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/app/api/admin/_auth";
 
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth) return auth;
   const body = await request.json().catch(() => null);
   if (!body) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { action, teamId, roundNumber, durationSeconds } = body;
-  if (!["start", "end", "pause_team", "resume_team", "set_duration"].includes(action)) {
+  const { action, teamId, roundNumber } = body;
+  if (!["start", "end", "pause_team", "resume_team"].includes(action)) {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
 
@@ -36,36 +36,6 @@ export async function POST(request: NextRequest) {
       { error: roundError?.message ?? "Round not found" },
       { status: 404 },
     );
-  }
-
-  const normalizedDuration =
-    typeof durationSeconds === "number"
-      ? durationSeconds
-      : Number(durationSeconds ?? 0);
-
-  if (action === "set_duration") {
-    if (!Number.isFinite(normalizedDuration) || normalizedDuration <= 0) {
-      return NextResponse.json(
-        { error: "Duration must be a positive number" },
-        { status: 400 },
-      );
-    }
-
-    const { data: updated, error: updateError } = await supabase
-      .from("rounds")
-      .update({ duration_seconds: Math.floor(normalizedDuration) })
-      .eq("id", round.id)
-      .select()
-      .maybeSingle();
-
-    if (updateError || !updated) {
-      return NextResponse.json(
-        { error: updateError?.message ?? "Unable to update duration" },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json(updated);
   }
 
   if (teamId) {
@@ -218,10 +188,6 @@ export async function POST(request: NextRequest) {
       paused_at: null,
       ended_by: null,
     };
-
-    if (Number.isFinite(normalizedDuration) && normalizedDuration > 0) {
-      payload.duration_seconds = Math.floor(normalizedDuration);
-    }
 
     const { data: updated, error: updateError } = await supabase
       .from("rounds")

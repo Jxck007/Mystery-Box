@@ -163,13 +163,13 @@ export default function Round2Page() {
           </div>
           {!team?.round2_code ? (
             <div className="banner paused">
-              Waiting for the admin to set your Round 2 code.
+              AWAITING INPUT: ADMIN CODE NOT ASSIGNED.
             </div>
           ) : team?.round2_solved_at ? (
             <div className="banner paused">
-              Code solved. {team.round2_status === "qualified"
-                ? "You qualified for Round 3."
-                : "Slots were full."}
+              SESSION TERMINATED. {team.round2_status === "qualified"
+                ? "OBJECTIVE COMPLETE: ROUND 3 ACCESS GRANTED."
+                : "OBJECTIVE COMPLETE: QUALIFICATION CAP REACHED."}
             </div>
           ) : (
             <div className="space-y-4">
@@ -247,6 +247,8 @@ export default function Round2Page() {
                       }
                       if (typeof payload.lockSeconds === "number") {
                         setLastLockSeconds(payload.lockSeconds);
+                      } else {
+                        setLastLockSeconds(0);
                       }
                       setRound2Status(payload.error ?? "Unable to submit code");
                       return;
@@ -260,7 +262,7 @@ export default function Round2Page() {
                   }}
                   disabled={round2Code.length !== 4}
                 >
-                  AUTHORIZE
+                  INITIALIZE
                 </button>
               </div>
               {round2Status && (
@@ -308,17 +310,21 @@ export default function Round2Page() {
               <div>
                 <p className="label">LOCK</p>
                 <p className="font-mono text-xs">
-                  {attemptCount > 0 ? `${lastLockSeconds}s / ATTEMPT ${attemptCount}` : "NONE"}
+                  {attemptCount > 0
+                    ? lastLockSeconds > 0
+                      ? `${lastLockSeconds}s / ATTEMPT ${attemptCount}`
+                      : `NONE / ATTEMPT ${attemptCount}`
+                    : "NONE"}
                 </p>
               </div>
             </div>
 
             <div className="banner paused">
               {team?.round2_solved_at
-                ? "This team already submitted Round 2."
+                ? "ROUND 2 SUBMISSION LOCKED FOR THIS UNIT."
                 : team?.round2_code
-                  ? "Enter the 4-digit code to qualify before other teams do."
-                  : "Waiting for the admin to assign your code."}
+                  ? "ENTER 4-DIGIT CODE. FIRST QUALIFIED UNITS ADVANCE."
+                  : "AWAITING INPUT: ADMIN CODE NOT ASSIGNED."}
             </div>
           </div>
           <div className="card space-y-3">
@@ -335,8 +341,10 @@ export default function Round2Page() {
             </div>
             <div className="banner ended">
               {attemptCount === 0
-                ? "Wrong attempts lock for 10s. After 3 attempts, lock increases to 30s."
-                : `Attempt ${attemptCount}. Current lock: ${lastLockSeconds}s.`}
+                ? "Lock applies every 3 wrong attempts: 10s, then 30s, then 50s, and so on."
+                : lastLockSeconds > 0
+                  ? `Attempt ${attemptCount}. Current lock: ${lastLockSeconds}s.`
+                  : `Attempt ${attemptCount}. No active lock.`}
             </div>
             <button className="button-secondary" onClick={() => router.push("/leaderboard")}>
               VIEW LEADERBOARD

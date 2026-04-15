@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { requireUser } from "@/lib/supabase-server";
 
+function createTeamCode() {
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
+}
+
 export async function POST(request: NextRequest) {
   const auth = await requireUser(request);
   if (!auth.user) {
@@ -49,7 +53,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const supabase = createAdminClient();
+  let supabase;
+  try {
+    supabase = createAdminClient();
+  } catch (error) {
+    console.error("[teams/create] Admin client init failed", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Server database configuration error",
+      },
+      { status: 500 },
+    );
+  }
 
   const { data: existingPlayer, error: existingError } = await supabase
     .from("players")
@@ -58,6 +76,7 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (existingError) {
+    console.error("[teams/create] Existing player check failed", existingError);
     return NextResponse.json({ error: existingError.message }, { status: 500 });
   }
 
@@ -72,6 +91,7 @@ export async function POST(request: NextRequest) {
     .from("teams")
     .insert({
       name: trimmedTeam,
+      code: createTeamCode(),
       leader_name: trimmedLeader,
       score: 0,
       max_members: parsedMaxMembers,
@@ -81,6 +101,13 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (insertError || !team) {
+    console.error("[teams/create] Team insert failed", insertError);
+    if (insertError?.code === "23505") {
+      return NextResponse.json(
+        { error: "Team name already exists. Please choose another name." },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       { error: insertError?.message ?? "Unable to create team" },
       { status: 500 },
@@ -93,7 +120,14 @@ export async function POST(request: NextRequest) {
     user_id: name === trimmedLeader ? auth.user.id : null,
   }));
 
-  await supabase.from("players").insert(playerRows);
+  const { error: playerInsertError } = await supabase.from("players").insert(playerRows);
+  if (playerInsertError) {
+    console.error("[teams/create] Player rows insert failed", playerInsertError);
+    return NextResponse.json(
+      { error: `Team created, but player setup failed: ${playerInsertError.message}` },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json(team);
 }

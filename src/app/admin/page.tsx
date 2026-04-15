@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import QRCode from "qrcode";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { PairBattleBoard } from "@/app/components/pair-battle-board";
 
 type TeamDetail = {
   id: string;
@@ -55,13 +55,13 @@ type TeamEventLog = {
   created_at: string;
 };
 
+const ROUND1_SURVIVOR_LIMIT = 12;
+const ROUND2_QUALIFY_LIMIT = 6;
+
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [authorized, setAuthorized] = useState(true);
   const [rounds, setRounds] = useState<RoundRecord[]>([]);
-  const [roundDurationInput, setRoundDurationInput] = useState<
-    Record<number, number>
-  >({});
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [teams, setTeams] = useState<TeamDetail[]>([]);
   const [membersCache, setMembersCache] = useState<
@@ -74,29 +74,30 @@ export default function AdminDashboardPage() {
   const [leaderboardStatus, setLeaderboardStatus] = useState("");
   const [leaderboardRefreshing, setLeaderboardRefreshing] = useState(false);
   const [actionBusy, setActionBusy] = useState<Record<string, boolean>>({});
-  const [rescueEmail, setRescueEmail] = useState("");
-  const [rescueLink, setRescueLink] = useState("");
-  const [rescueQr, setRescueQr] = useState("");
-  const [rescueStatus, setRescueStatus] = useState("");
-  const [rescueLoading, setRescueLoading] = useState(false);
-  const [round2Inputs, setRound2Inputs] = useState<Record<string, string>>({});
   const [eventLogs, setEventLogs] = useState<TeamEventLog[]>([]);
+  const [expandedTeamLogs, setExpandedTeamLogs] = useState<Record<string, boolean>>({});
 
-  const getAdminHeaders = useCallback(() => {
-    return {};
+  const getAdminHeaders = useCallback(async () => {
+    const { data } = await supabaseBrowser.auth.getSession();
+    if (!data.session?.access_token) {
+      return null;
+    }
+
+    return {
+      Authorization: `Bearer ${data.session.access_token}`,
+    };
   }, []);
 
   const handleUnauthorized = useCallback(() => {
     setAuthorized(false);
-    fetch("/api/admin/session", { method: "DELETE" }).catch(() => null);
-    router.replace("/admin-entry");
+    supabaseBrowser.auth.signOut().catch(() => null);
+    router.replace("/auth?redirect=/admin");
   }, [router]);
 
   useEffect(() => {
     const verifySession = async () => {
-      const response = await fetch("/api/admin/session");
-      const data = await response.json().catch(() => ({ active: false }));
-      if (!response.ok || !data.active) {
+      const { data } = await supabaseBrowser.auth.getSession();
+      if (!data.session) {
         handleUnauthorized();
       }
     };
@@ -104,8 +105,13 @@ export default function AdminDashboardPage() {
   }, [handleUnauthorized]);
 
   const fetchRounds = useCallback(async () => {
+    const adminHeaders = await getAdminHeaders();
+    if (!adminHeaders) {
+      handleUnauthorized();
+      return;
+    }
     const response = await fetch("/api/admin/rounds/list", {
-      headers: getAdminHeaders(),
+      headers: adminHeaders,
     });
     if (response.status === 401) {
       handleUnauthorized();
@@ -114,17 +120,6 @@ export default function AdminDashboardPage() {
     const payload = await response.json();
     if (response.ok && Array.isArray(payload)) {
       setRounds(payload);
-      setRoundDurationInput((prev) => {
-        const next = { ...prev };
-        payload.forEach((round: RoundRecord) => {
-          if (round.round_number && !next[round.round_number]) {
-            const fallbackDuration =
-              round.round_number === 1 ? 300 : round.duration_seconds ?? 0;
-            next[round.round_number] = round.duration_seconds ?? fallbackDuration;
-          }
-        });
-        return next;
-      });
     }
   }, [getAdminHeaders, handleUnauthorized]);
 
@@ -145,8 +140,13 @@ export default function AdminDashboardPage() {
   }, []);
 
   const fetchEventLogs = useCallback(async () => {
+    const adminHeaders = await getAdminHeaders();
+    if (!adminHeaders) {
+      handleUnauthorized();
+      return;
+    }
     const response = await fetch("/api/admin/events", {
-      headers: getAdminHeaders(),
+      headers: adminHeaders,
       cache: "no-store",
     });
     if (response.status === 401) {
@@ -254,13 +254,16 @@ export default function AdminDashboardPage() {
     if (teamId) {
       payload.teamId = teamId;
     }
-    if (action === "start") {
-      payload.durationSeconds = roundDurationInput[roundNumber] ?? 0;
+
+    const adminHeaders = await getAdminHeaders();
+    if (!adminHeaders) {
+      handleUnauthorized();
+      return;
     }
 
     const response = await fetch("/api/admin/rounds/update", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+      headers: { "Content-Type": "application/json", ...adminHeaders },
       body: JSON.stringify(payload),
     });
     if (response.status === 401) {
@@ -299,9 +302,15 @@ export default function AdminDashboardPage() {
       payload.amount = Math.max(0, Math.floor(amount));
     }
 
+    const adminHeaders = await getAdminHeaders();
+    if (!adminHeaders) {
+      handleUnauthorized();
+      return;
+    }
+
     const response = await fetch("/api/admin/scores/update", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+      headers: { "Content-Type": "application/json", ...adminHeaders },
       body: JSON.stringify(payload),
     });
 
@@ -331,9 +340,15 @@ export default function AdminDashboardPage() {
       setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
       setStatusMessage("Syncing command...");
     }
+    const adminHeaders = await getAdminHeaders();
+    if (!adminHeaders) {
+      handleUnauthorized();
+      return;
+    }
+
     const response = await fetch("/api/admin/teams/remove", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+      headers: { "Content-Type": "application/json", ...adminHeaders },
       body: JSON.stringify({ teamId }),
     });
     if (response.status === 401) {
@@ -356,9 +371,15 @@ export default function AdminDashboardPage() {
       setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
       setStatusMessage("Syncing command...");
     }
+    const adminHeaders = await getAdminHeaders();
+    if (!adminHeaders) {
+      handleUnauthorized();
+      return;
+    }
+
     const response = await fetch("/api/admin/teams/restore", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+      headers: { "Content-Type": "application/json", ...adminHeaders },
       body: JSON.stringify({ teamId, action }),
     });
     if (response.status === 401) {
@@ -384,37 +405,48 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleRound2Code = async (
-    teamId: string,
-    code: string,
-    busyKey?: string,
+  const handleApplyElimination = async (
+    roundNumber: 1 | 2,
+    busyKey: string,
   ) => {
-    if (busyKey) {
-      setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
-      setStatusMessage("Syncing command...");
+    setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
+    setStatusMessage(
+      roundNumber === 1
+        ? `Applying Round 1 cut: top ${ROUND1_SURVIVOR_LIMIT} by score...`
+        : `Applying Round 2 cut: first ${ROUND2_QUALIFY_LIMIT} solvers...`,
+    );
+
+    const adminHeaders = await getAdminHeaders();
+    if (!adminHeaders) {
+      handleUnauthorized();
+      return;
     }
-    const response = await fetch("/api/admin/round2/code", {
+
+    const response = await fetch("/api/admin/elimination/apply", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
-      body: JSON.stringify({ teamId, code }),
+      headers: { "Content-Type": "application/json", ...adminHeaders },
+      body: JSON.stringify({ roundNumber }),
     });
+
     if (response.status === 401) {
       handleUnauthorized();
       return;
     }
+
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      setStatusMessage(data.error ?? "Unable to set code.");
-      if (busyKey) {
-        setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
-      }
+      setStatusMessage(data.error ?? "Unable to apply elimination.");
+      setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
       return;
     }
-    setStatusMessage("Round 2 code saved.");
+
+    setStatusMessage(
+      roundNumber === 1
+        ? `Round 1 elimination applied. Top ${ROUND1_SURVIVOR_LIMIT} remain active.`
+        : `Round 2 elimination applied. First ${ROUND2_QUALIFY_LIMIT} solved teams qualified.`,
+    );
     await refreshAll();
-    if (busyKey) {
-      setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
-    }
+    setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
   };
 
   useEffect(() => {
@@ -434,29 +466,58 @@ export default function AdminDashboardPage() {
     });
   }, [authorized, teams, membersCache]);
 
-  useEffect(() => {
-    if (!authorized || teams.length === 0) return;
-    setRound2Inputs((prev) => {
-      const next = { ...prev };
-      teams.forEach((team) => {
-        if (next[team.id] === undefined && team.round2_code) {
-          next[team.id] = team.round2_code;
-        }
-      });
-      return next;
-    });
-  }, [authorized, teams]);
-
   const sortedLeaderboard = useMemo(() => {
     return [...leaderboard].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   }, [leaderboard]);
 
+  const sortedTeamsByScore = useMemo(() => {
+    return [...teams].sort((a, b) => {
+      const scoreDiff = (b.score ?? 0) - (a.score ?? 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      return (a.name ?? "").localeCompare(b.name ?? "");
+    });
+  }, [teams]);
+
+  const groupedTeamLogs = useMemo(() => {
+    const grouped = new Map<string, { teamName: string; events: TeamEventLog[] }>();
+    eventLogs.forEach((event) => {
+      const existing = grouped.get(event.team_id);
+      if (existing) {
+        existing.events.push(event);
+      } else {
+        grouped.set(event.team_id, { teamName: event.team_name, events: [event] });
+      }
+    });
+
+    return Array.from(grouped.entries())
+      .map(([teamId, group]) => ({
+        teamId,
+        teamName: group.teamName,
+        events: group.events.sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        ),
+      }))
+      .sort((a, b) => {
+        const aLast = a.events[0]?.created_at ?? "";
+        const bLast = b.events[0]?.created_at ?? "";
+        return new Date(bLast).getTime() - new Date(aLast).getTime();
+      });
+  }, [eventLogs]);
+
   const eliminationSummary = useMemo(() => {
-    const totalTeams = sortedLeaderboard.length;
-    const round1Cut = Math.max(1, Math.ceil(totalTeams * 0.6));
-    const round2Cut = Math.max(1, Math.ceil(totalTeams * 0.4));
+    const totalTeams = sortedTeamsByScore.length;
+    const round1Cut = Math.min(totalTeams, ROUND1_SURVIVOR_LIMIT);
+    const round2Cut = Math.min(round1Cut, ROUND2_QUALIFY_LIMIT);
     return { totalTeams, round1Cut, round2Cut };
-  }, [sortedLeaderboard]);
+  }, [sortedTeamsByScore]);
+
+  const round2SolvedCount = useMemo(() => {
+    return teams.filter((team) => Boolean(team.round2_solved_at)).length;
+  }, [teams]);
+
+  const round2QualifiedCount = useMemo(() => {
+    return teams.filter((team) => team.round2_status === "qualified").length;
+  }, [teams]);
 
   const latestAutoEndedRound = useMemo(() => {
     const autoEnded = rounds.filter((round) => round.ended_by === "auto");
@@ -531,21 +592,6 @@ export default function AdminDashboardPage() {
     return () => window.clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    if (!rescueLink) {
-      setRescueQr("");
-      return;
-    }
-
-    QRCode.toDataURL(rescueLink, {
-      margin: 1,
-      width: 220,
-      color: { dark: "#0b1020", light: "#f8fafc" },
-    })
-      .then((url: string) => setRescueQr(url))
-      .catch(() => setRescueQr(""));
-  }, [rescueLink]);
-
   const formatTime = useCallback((seconds: number | null | undefined) => {
     if (seconds === null || seconds === undefined) return "--:--";
     const safe = Math.max(0, Math.floor(seconds));
@@ -587,7 +633,7 @@ export default function AdminDashboardPage() {
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", opacity: 0.5 }}>V.2.0.4_STABLE</div>
         </div>
         <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
-          {["ROUND CONTROL", "BOX REGISTRY", "GLOBAL STATUS", "SCORE OVERRIDE", "LIVE LOGS"].map((item) => (
+          {["ROUND CONTROL", "SCORES", "ELIMINATION", "PAIR BATTLE", "LIVE LOGS"].map((item) => (
             <div key={item} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.15em", textTransform: "uppercase", fontWeight: 700 }}>
               {item}
             </div>
@@ -621,7 +667,7 @@ export default function AdminDashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="label">Round control</p>
-            <h2 className="text-2xl font-semibold">Global round settings</h2>
+            <h2 className="text-2xl font-semibold">Round control</h2>
             <p className="text-sm text-slate-300">
               Start a round for all teams, then pause or resume a single team
               if they need extra time after the real-world task.
@@ -635,7 +681,7 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {rounds.map((round) => {
+          {rounds.filter((round) => (round.round_number ?? 0) === 1).map((round) => {
             const roundNumber = round.round_number ?? 0;
             const isAvailable = availableRounds.includes(roundNumber);
             const isSelected = roundNumber === (selectedRound?.round_number ?? 0);
@@ -672,27 +718,6 @@ export default function AdminDashboardPage() {
                 Time left: {formatTime(getLiveRemaining(selectedRound))}
               </p>
             </div>
-            <label
-              className="text-xs text-slate-400"
-              htmlFor={`round-duration-${selectedRound.id}`}
-            >
-              Duration (seconds)
-            </label>
-            <input
-              id={`round-duration-${selectedRound.id}`}
-              type="number"
-              min={60}
-              className="input-field text-sm"
-              value={roundDurationInput[selectedRound.round_number ?? 0] ?? 0}
-              onChange={(event) =>
-                setRoundDurationInput((prev) => ({
-                  ...prev,
-                  [selectedRound.round_number ?? 0]: Number(event.target.value),
-                }))
-              }
-              disabled={selectedRound.status === "active"}
-              readOnly={selectedRound.status === "active"}
-            />
             <div className="admin-action-grid mt-2">
               {(() => {
                 const roundKey = `round-${selectedRound.round_number ?? 0}-toggle`;
@@ -728,118 +753,65 @@ export default function AdminDashboardPage() {
         <div className="card admin-section space-y-4">
           <div>
             <p className="label">Live logs</p>
-            <h2 className="text-2xl font-semibold">Team activity feed</h2>
+            <h2 className="text-2xl font-semibold">Team activity feed (grouped)</h2>
             <p className="text-sm text-slate-300">
-              Includes mission assignment, briefing, and team timer starts.
+              Click a team row to expand or collapse its activity history.
             </p>
           </div>
           <div className="space-y-2 max-h-72 overflow-auto">
-            {eventLogs.length === 0 && (
+            {groupedTeamLogs.length === 0 && (
               <p className="text-sm text-slate-400">No events yet.</p>
             )}
-            {eventLogs.map((event) => (
-              <div key={event.id} className="rounded-xl border border-slate-700/40 bg-slate-900/60 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-100">{event.team_name}</p>
-                  <p className="text-xs text-slate-400">
-                    {new Date(event.created_at).toLocaleTimeString()}
-                  </p>
+            {groupedTeamLogs.map((group) => {
+              const expanded = Boolean(expandedTeamLogs[group.teamId]);
+              const latest = group.events[0];
+              return (
+                <div key={group.teamId} className="rounded-xl border border-slate-700/40 bg-slate-900/60 p-3">
+                  <button
+                    type="button"
+                    className="w-full text-left"
+                    onClick={() =>
+                      setExpandedTeamLogs((prev) => ({
+                        ...prev,
+                        [group.teamId]: !expanded,
+                      }))
+                    }
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-slate-100">{group.teamName}</p>
+                      <p className="text-xs text-slate-400">
+                        {group.events.length} event{group.events.length !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                    {latest && (
+                      <p className="text-xs text-slate-400 mt-1">
+                        Latest: {new Date(latest.created_at).toLocaleTimeString()} - {latest.message}
+                      </p>
+                    )}
+                  </button>
+
+                  {expanded && (
+                    <div className="mt-3 space-y-2">
+                      {group.events.map((event) => (
+                        <div key={event.id} className="rounded-lg border border-slate-700/40 bg-slate-950/60 p-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs uppercase tracking-wide text-slate-500">{event.event_type}</p>
+                            <p className="text-xs text-slate-400">
+                              {new Date(event.created_at).toLocaleTimeString()}
+                            </p>
+                          </div>
+                          <p className="text-sm text-slate-200">{event.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">{event.event_type}</p>
-                <p className="text-sm text-slate-200">{event.message}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
 
-          <div className="card admin-section space-y-6">
-        <div>
-          <p className="label">Password management</p>
-          <h2 className="text-2xl font-semibold">Access &amp; codes</h2>
-          <p className="text-sm text-slate-300">
-            Manage rescue links and Round 2 keypad codes.
-          </p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-          <div className="space-y-2">
-            <label
-              className="block text-sm font-semibold text-slate-200"
-              htmlFor="rescue-email"
-            >
-              Player email
-            </label>
-            <input
-              id="rescue-email"
-              className="input-field"
-              type="email"
-              placeholder="player@example.com"
-              value={rescueEmail}
-              onChange={(event) => setRescueEmail(event.target.value)}
-            />
-          </div>
-          <button
-            className="button-neutral"
-            type="button"
-            disabled={rescueLoading}
-            onClick={async () => {
-              setRescueStatus("");
-              setRescueLink("");
-              setRescueQr("");
-              setRescueLoading(true);
-              const response = await fetch("/api/admin/auth/link", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...getAdminHeaders() },
-                body: JSON.stringify({ email: rescueEmail, redirectTo: "/" }),
-              });
-              if (response.status === 401) {
-                handleUnauthorized();
-                return;
-              }
-              const data = await response.json();
-              if (!response.ok) {
-                setRescueStatus(data.error ?? "Unable to generate link");
-                setRescueLoading(false);
-                return;
-              }
-              setRescueLink(data.link ?? "");
-              setRescueStatus("Link ready. Share it with the player.");
-              setRescueLoading(false);
-            }}
-          >
-            {rescueLoading ? "Building secure link..." : "Generate link"}
-          </button>
-        </div>
-        {rescueStatus && <p className="text-sm text-slate-300">{rescueStatus}</p>}
-        {rescueLink && (
-          <div className="space-y-2">
-            <label
-              className="block text-sm font-semibold text-slate-200"
-              htmlFor="rescue-link"
-            >
-              Rescue link
-            </label>
-            <textarea
-              id="rescue-link"
-              className="input-field h-24"
-              readOnly
-              value={rescueLink}
-            />
-            <button
-              className="button-muted"
-              type="button"
-              onClick={() => navigator.clipboard.writeText(rescueLink)}
-            >
-              Copy link
-            </button>
-            {rescueQr && (
-              <div className="rounded-xl border border-slate-700/50 bg-white p-3 inline-flex">
-                <img src={rescueQr} alt="Rescue QR code" width={220} height={220} />
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
           <div className="card admin-section space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1037,139 +1009,51 @@ export default function AdminDashboardPage() {
 
           <div className="card admin-section space-y-4">
         <div>
-          <p className="label">Round 2 controls</p>
-          <h2 className="text-2xl font-semibold">Per-team code keypad</h2>
-          <p className="text-sm text-slate-300">
-            Set the 4-digit code for each team. Codes unlock the Round 2 keypad.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {(() => {
-            const round2 = rounds.find((round) => round.round_number === 2);
-            const round2Key = "round-2-start";
-            const round2Busy = actionBusy[round2Key];
-            const isActive = round2?.status === "active";
-            const canStart = Boolean(round2) && availableRounds.includes(2) && !isActive;
-            const canEnd = Boolean(round2) && isActive;
-            return (
-              <button
-                className={`admin-action-button ${isActive ? "button-neutral" : "button-success"}`}
-                onClick={() =>
-                  handleRoundAction(isActive ? "end" : "start", 2, undefined, round2Key)
-                }
-                disabled={!(canStart || canEnd) || round2Busy}
-              >
-                {round2Busy
-                  ? "Syncing..."
-                  : isActive
-                  ? "End Round 2"
-                  : "Start Round 2"}
-              </button>
-            );
-          })()}
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {teams.map((team) => {
-            const input = round2Inputs[team.id] ?? "";
-            const lockUntil = team.round2_lock_until
-              ? new Date(team.round2_lock_until).getTime()
-              : null;
-            const lockRemaining = lockUntil ? Math.ceil((lockUntil - Date.now()) / 1000) : 0;
-            const lockLabel = lockRemaining > 0 ? `Locked ${lockRemaining}s` : "Unlocked";
-            const statusLabel = team.round2_solved_at
-              ? team.round2_status === "qualified"
-                ? "Qualified"
-                : "Eliminated"
-              : team.round2_code
-              ? "Code ready"
-              : "Awaiting";
-            const busyKey = `round2-${team.id}-code`;
-            const busy = actionBusy[busyKey];
-            return (
-              <div
-                key={team.id}
-                className="rounded-2xl border border-slate-700/50 bg-slate-900/60 p-4 space-y-3"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-100">{team.name}</p>
-                  </div>
-                  <div className="text-xs text-slate-300">{statusLabel}</div>
-                </div>
-                <div className="text-xs text-slate-400">Lock: {lockLabel}</div>
-                <div className="text-xs text-slate-400">
-                  Current code: {team.round2_code ?? "--"}
-                </div>
-                <div className="code-panel">
-                  <div className="code-display">
-                    {Array.from({ length: 4 }).map((_, index) => (
-                      <span key={index} className="code-slot">
-                        {input[index] ?? "_"}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="code-keypad">
-                    {Array.from({ length: 10 }).map((_, index) => {
-                      const value = (index + 1) % 10;
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          className="button-muted"
-                          onClick={() => {
-                            if (input.length < 4) {
-                              setRound2Inputs((prev) => ({
-                                ...prev,
-                                [team.id]: `${input}${value}`,
-                              }));
-                            }
-                          }}
-                        >
-                          {value}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="button-muted"
-                      onClick={() =>
-                        setRound2Inputs((prev) => ({ ...prev, [team.id]: "" }))
-                      }
-                    >
-                      Clear
-                    </button>
-                    <button
-                      type="button"
-                      className="button-primary"
-                      onClick={() => handleRound2Code(team.id, input, busyKey)}
-                      disabled={input.length !== 4 || busy}
-                    >
-                      {busy ? "Saving..." : "Set Code"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-          <div className="card admin-section space-y-4">
-        <div>
           <p className="label">Tournament board</p>
           <h2 className="text-2xl font-semibold">Elimination tracker</h2>
+              <p className="text-sm text-slate-300">
+                Round 1 keeps top {ROUND1_SURVIVOR_LIMIT} teams by score. Round 2 keeps first {ROUND2_QUALIFY_LIMIT} teams to solve the code.
+              </p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm text-slate-300">
           <span>Round 1 cut: Top {eliminationSummary.round1Cut}</span>
-          <span>Round 2 cut: Top {eliminationSummary.round2Cut}</span>
+              <span>Round 2 cut: First {eliminationSummary.round2Cut} solves</span>
+              <span>Round 2 solved: {round2SolvedCount}</span>
+              <span>Round 2 qualified: {round2QualifiedCount}</span>
           <span>
             Status: {eliminationStage > 0
               ? `Round ${eliminationStage} officially ended`
               : "Waiting for official round end"}
           </span>
         </div>
+            <div className="admin-action-grid">
+              {(() => {
+                const busyKey = "elimination-round1";
+                const busy = actionBusy[busyKey];
+                return (
+                  <button
+                    className="admin-action-button button-neutral"
+                    onClick={() => handleApplyElimination(1, busyKey)}
+                    disabled={busy}
+                  >
+                    {busy ? "Syncing..." : `Apply Round 1 Cut (Top ${ROUND1_SURVIVOR_LIMIT})`}
+                  </button>
+                );
+              })()}
+              {(() => {
+                const busyKey = "elimination-round2";
+                const busy = actionBusy[busyKey];
+                return (
+                  <button
+                    className="admin-action-button button-danger"
+                    onClick={() => handleApplyElimination(2, busyKey)}
+                    disabled={busy || round2SolvedCount === 0}
+                  >
+                    {busy ? "Syncing..." : `Apply Round 2 Cut (First ${ROUND2_QUALIFY_LIMIT})`}
+                  </button>
+                );
+              })()}
+            </div>
         <div className="overflow-x-auto">
           <table className="leaderboard-table">
             <thead>
@@ -1182,18 +1066,18 @@ export default function AdminDashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {sortedLeaderboard.map((team, index) => {
+              {sortedTeamsByScore.map((team, index) => {
                 const rank = index + 1;
                 const round1Cut = eliminationSummary.round1Cut;
-                const round2Cut = eliminationSummary.round2Cut;
-                const isFinal = round2Cut === 1;
                 let statusLabel = "In play";
                 if (eliminationStage >= 2) {
                   statusLabel =
-                    rank <= round2Cut
-                      ? isFinal
-                        ? "Winner"
-                        : "Qualified"
+                    team.round2_status === "qualified"
+                      ? "Qualified"
+                      : team.round2_solved_at
+                      ? "Eliminated"
+                      : team.eliminated_round === 1
+                      ? "Eliminated"
                       : rank <= round1Cut
                       ? "Playoff"
                       : "Eliminated";
@@ -1242,6 +1126,13 @@ export default function AdminDashboardPage() {
           </table>
         </div>
       </div>
+      {selectedRound && (
+        <PairBattleBoard 
+          roundId={selectedRound.id} 
+          onStatusChange={setStatusMessage} 
+          getAdminHeaders={getAdminHeaders}
+        />
+      )}
           <div className="card">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {[

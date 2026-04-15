@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // ── Seeded PRNG (keep exactly as is) ──
 function seededRandom(seed: string): () => number {
@@ -674,14 +674,19 @@ function useInjectGameArtStyles() {
 
 function useTapAnswer(disabled: boolean, onComplete: (result: MiniGameResult) => void, resetKey: string) {
   const [chosen, setChosen] = useState<string | null>(null);
-  useEffect(() => setChosen(null), [resetKey]);
+  const submitLockedRef = useRef(false);
+
+  useEffect(() => {
+    setChosen(null);
+    submitLockedRef.current = false;
+  }, [resetKey]);
 
   const submit = (value: string, correct: boolean) => {
-    if (disabled || chosen) return;
+    if (disabled || submitLockedRef.current) return;
+    submitLockedRef.current = true;
     setChosen(value);
-    setTimeout(() => {
-      onComplete({ success: correct, details: correct ? "Correct" : "Wrong" });
-    }, 300);
+    // Resolve immediately to avoid timeout race at the last second.
+    onComplete({ success: correct, details: correct ? "Correct" : "Wrong" });
   };
 
   return { chosen, submit };

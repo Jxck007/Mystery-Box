@@ -54,7 +54,8 @@ export default function CreateTeamPage() {
       const response = await fetch("/api/players/me", {
         headers: { Authorization: `Bearer ${data.session.access_token}` },
       });
-      if (response.ok) {
+      const payload = await response.json().catch(() => null);
+      if (response.ok && payload?.team) {
         router.replace("/team");
         return;
       }
@@ -123,12 +124,12 @@ export default function CreateTeamPage() {
     <main className="page-shell">
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
         <section className="md:col-span-5 space-y-4">
-          <p className="section-tag">PHASE 01: FORMATION</p>
+          <p className="section-tag">NODE FORMATION PROTOCOL</p>
           <h1 className="font-headline text-5xl md:text-6xl font-black uppercase leading-[0.9]" style={{ letterSpacing: "-0.04em" }}>
             ESTABLISH / YOUR / COLLECTIVE
           </h1>
           <p className="text-sm md:text-base text-[var(--text-muted)]">
-            Configure team identity, designate lead control, and lock unit capacity before mission start.
+            Configure unit identity, assign command lead, and finalize squad capacity.
           </p>
           <div className="card py-4" style={{ borderLeft: "3px solid var(--accent)" }}>
             <p className="label">FORMATION_NOTE</p>
@@ -139,7 +140,7 @@ export default function CreateTeamPage() {
         </section>
         <section className="md:col-span-7 card space-y-6" style={{ background: "var(--bg-container)" }}>
           <div className="flex items-center justify-between">
-            <p className="label">CREATE TEAM</p>
+            <p className="label">UNIT INITIALIZATION</p>
             <button
               type="button"
               className="button-muted text-xs"
@@ -148,12 +149,12 @@ export default function CreateTeamPage() {
                 router.back();
               }}
             >
-              BACK
+              RETURN
             </button>
           </div>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <p className="label">01. TEAM DESIGNATION</p>
+              <p className="label">01. UNIT DESIGNATION</p>
               <input
                 id="team-name"
                 value={teamName}
@@ -164,7 +165,7 @@ export default function CreateTeamPage() {
               />
             </div>
             <div>
-              <p className="label">02. LEAD ARCHITECT</p>
+              <p className="label">02. COMMAND LEAD</p>
               <input
                 id="leader-name"
                 value={leaderName}
@@ -175,7 +176,7 @@ export default function CreateTeamPage() {
               />
             </div>
             <div className="space-y-3">
-              <p className="label">03. UNIT CAPACITY</p>
+              <p className="label">03. CAPACITY MATRIX</p>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -187,7 +188,7 @@ export default function CreateTeamPage() {
                   }}
                 >
                   <span className="font-headline text-4xl font-black">03</span>
-                  <span className="label">MINIMUM UNIT</span>
+                  <span className="label">TRIAD NODE</span>
                 </button>
                 <button
                   type="button"
@@ -199,12 +200,12 @@ export default function CreateTeamPage() {
                   }}
                 >
                   <span className="font-headline text-4xl font-black">04</span>
-                  <span className="label">MAXIMUM UNIT</span>
+                  <span className="label">QUAD NODE</span>
                 </button>
               </div>
             </div>
             <div className="space-y-3">
-              <p className="label">OPTIONAL MEMBER NODES</p>
+              <p className="label">AUXILIARY NODES</p>
               {memberNames.map((name, index) => (
                 <input
                   key={`member-${index}`}
@@ -225,7 +226,7 @@ export default function CreateTeamPage() {
               </p>
             )}
             <button type="submit" className="button-primary w-full" disabled={loading || checkingAuth}>
-              {loading || checkingAuth ? "INITIALIZING..." : "INITIALIZE TEAM"}
+              {loading || checkingAuth ? "INITIALIZING..." : "INITIALIZE UNIT"}
             </button>
           </form>
         </section>

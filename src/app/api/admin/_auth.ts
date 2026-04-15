@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getProvidedAdminCredential, isValidAdminCredential } from "@/lib/admin-auth";
+import { requireUser } from "@/lib/supabase-server";
 import { TEST_MODE_COOKIE } from "@/lib/test-mode";
 
-export function requireAdmin(request: Request) {
+export async function requireAdmin(request: Request) {
   const cookieHeader = request.headers.get("cookie") ?? "";
   const isTestBypass =
     process.env.NODE_ENV !== "production" &&
@@ -15,9 +15,9 @@ export function requireAdmin(request: Request) {
     return null;
   }
 
-  const provided = getProvidedAdminCredential(request);
+  const auth = await requireUser(request);
 
-  if (!isValidAdminCredential(provided)) {
+  if (!auth.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
