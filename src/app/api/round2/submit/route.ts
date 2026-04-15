@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     if (Date.now() < lockUntil) {
       const remaining = Math.ceil((lockUntil - Date.now()) / 1000);
       return NextResponse.json(
-        { error: `Locked. Try again in ${remaining}s.` },
+        { error: `Locked. Try again in ${remaining}s.`, lockSeconds: remaining },
         { status: 400 },
       );
     }
@@ -81,7 +81,8 @@ export async function POST(request: NextRequest) {
       .from("team_events")
       .select("id", { count: "exact", head: true })
       .eq("team_id", team.id)
-      .eq("event_type", "round2_attempt");
+      .eq("event_type", "round")
+      .ilike("message", "ROUND2_ATTEMPT:%");
 
     if (latestReset?.created_at) {
       attemptsQuery = attemptsQuery.gt("created_at", latestReset.created_at);
@@ -105,10 +106,10 @@ export async function POST(request: NextRequest) {
 
     await supabase.from("team_events").insert({
       team_id: team.id,
-      event_type: "round2_attempt",
+      event_type: "round",
       message: shouldLock
-        ? `Wrong round 2 code attempt ${nextAttempt}. Locked for ${lockSeconds}s.`
-        : `Wrong round 2 code attempt ${nextAttempt}.`,
+        ? `ROUND2_ATTEMPT:${nextAttempt}:LOCK:${lockSeconds}`
+        : `ROUND2_ATTEMPT:${nextAttempt}:MISS`,
     });
 
     return NextResponse.json(

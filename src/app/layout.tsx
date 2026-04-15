@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Orbitron, Rajdhani } from "next/font/google";
 import { HeaderNavLinks } from "./nav-links";
 import { SoundBootstrap } from "./sound-bootstrap";
+import { SoundToggle } from "./sound-toggle";
 import "./globals.css";
 
 const rajdhani = Rajdhani({
@@ -28,6 +29,13 @@ export const metadata: Metadata = {
   icons: {
     icon: "/Logo.jpg",
   },
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#05070d",
 };
 
 export default function RootLayout({
@@ -67,6 +75,7 @@ export default function RootLayout({
             </span>
           </div>
           <div className="header-actions">
+            <SoundToggle />
             <HeaderNavLinks />
           </div>
         </header>

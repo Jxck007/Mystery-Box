@@ -46,6 +46,10 @@ const EVENT_SOUND_MAP = {
   team_created: "Create",
   leaderboard_open: "LeaderBoard",
     wrong_streak_r2: "WrongStreak2",
+  round1_streak_defeated: "WrongStreak",
+  round2_lockout: "WrongStreak2",
+  round1_defeat: "Defeat",
+  round2_defeat: "Defeat2",
 } as const satisfies Record<string, SoundName>;
 
 export type SoundEventName = keyof typeof EVENT_SOUND_MAP | "bootstrap" | "reset_streak";
@@ -64,11 +68,30 @@ class SoundManager {
   private wrongStreak = 0;
   private wrongStreakPlayed = false;
   private readonly cooldownMs = 200;
+  private enabled = true;
+
+  isEnabled() {
+    return this.enabled;
+  }
+
+  setEnabled(nextValue: boolean) {
+    this.enabled = nextValue;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("mb_sound_enabled", nextValue ? "1" : "0");
+    }
+    if (!nextValue) {
+      this.stopAllInternal();
+    }
+  }
 
   playSound(eventName: SoundEventName) {
     if (typeof window === "undefined") return;
 
     this.ensureInitialized();
+
+    if (eventName !== "bootstrap" && !this.enabled) {
+      return;
+    }
 
     if (eventName === "bootstrap") {
       return;
@@ -116,9 +139,8 @@ class SoundManager {
     if (eventName === "wrong_r2") {
       this.wrongStreak += 1;
       this.playWithRules(eventName);
-      if (this.wrongStreak >= 3 && !this.wrongStreakPlayed) {
-        this.wrongStreakPlayed = true;
-          window.setTimeout(() => this.playWithRules("wrong_streak_r2"), 80);
+      if (this.wrongStreak >= 3 && this.wrongStreak % 3 === 0) {
+        window.setTimeout(() => this.playWithRules("wrong_streak_r2"), 80);
       }
       return;
     }
@@ -209,11 +231,16 @@ class SoundManager {
     this.currentSound = soundName;
     audio.currentTime = 0;
     void audio.play().catch(() => undefined);
+    this.triggerHapticsBySound(soundName);
   }
 
   private ensureInitialized() {
     if (this.initialized) return;
     this.initialized = true;
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("mb_sound_enabled");
+      this.enabled = stored !== "0";
+    }
     (Object.keys(SOUND_FILES) as SoundName[]).forEach((name) => {
       const audio = this.getAudio(name);
       audio.preload = "auto";
@@ -230,6 +257,42 @@ class SoundManager {
       });
       audio.load();
     });
+  }
+
+  private triggerHaptics(eventName: Exclude<SoundEventName, "bootstrap" | "reset_streak">) {
+    if (typeof navigator === "undefined" || !navigator.vibrate) {
+      return;
+    }
+
+    if (eventName.includes("lose") || eventName.includes("wrong")) {
+      navigator.vibrate([16, 28, 16]);
+      return;
+    }
+
+    if (eventName.includes("win") || eventName.includes("correct") || eventName.includes("start")) {
+      navigator.vibrate(28);
+      return;
+    }
+
+    navigator.vibrate(14);
+  }
+
+  private triggerHapticsBySound(soundName: SoundName) {
+    if (typeof navigator === "undefined" || !navigator.vibrate) {
+      return;
+    }
+
+    if (soundName === "Defeat" || soundName === "Defeat2" || soundName === "Wrong" || soundName === "Wrong2" || soundName === "WrongStreak" || soundName === "WrongStreak2") {
+      navigator.vibrate([16, 28, 16]);
+      return;
+    }
+
+    if (soundName === "Victory" || soundName === "Victory2" || soundName === "Correct" || soundName === "Correct2" || soundName === "Start" || soundName === "Start2") {
+      navigator.vibrate(28);
+      return;
+    }
+
+    navigator.vibrate(12);
   }
 
   private stopAllInternal() {
@@ -260,4 +323,10 @@ export const playSound = (eventName: SoundEventName) => {
 
 export const playSoundAndWait = async (eventName: SoundEventName, maxWaitMs?: number) => {
   await soundManager.playSoundAndWait(eventName, maxWaitMs);
+};
+
+export const isSoundEnabled = () => soundManager.isEnabled();
+
+export const setSoundEnabled = (nextValue: boolean) => {
+  soundManager.setEnabled(nextValue);
 };

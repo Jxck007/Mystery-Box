@@ -352,6 +352,38 @@ h1, h2, h3, h4, h5, h6 {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+.header-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(103, 232, 255, 0.18);
+  background: rgba(8, 14, 24, 0.82);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+.header-toggle.is-active {
+  color: var(--accent);
+  border-color: rgba(103, 232, 255, 0.45);
+  box-shadow: 0 0 18px rgba(103, 232, 255, 0.18);
+}
+.header-toggle.is-muted {
+  color: var(--text-ghost);
+}
+.header-toggle:hover,
+.header-toggle:focus-visible {
+  transform: translateY(-1px);
+  outline: none;
+  border-color: var(--border-hi);
+}
 
 .briefing-overlay {
   position: fixed;
@@ -1274,6 +1306,19 @@ h1, h2, h3, h4, h5, h6 {
   .leaderboard-table td {
     padding-left: 4px;
     padding-right: 4px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  body::before,
+  body::after {
+    display: none;
   }
 }
 
