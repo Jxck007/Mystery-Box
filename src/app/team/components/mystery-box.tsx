@@ -11,9 +11,10 @@ type MysteryBoxProps = {
   gameTitle?: string;
   onOpen: () => void;
   onEnded?: () => void;
+  children?: React.ReactNode;
 };
 
-export function MysteryBox({ disabled, isClicked, videoPreviewSrc, isPlaying, gameTitle, onOpen, onEnded }: MysteryBoxProps) {
+export function MysteryBox({ disabled, isClicked, videoPreviewSrc, isPlaying, gameTitle, onOpen, onEnded, children }: MysteryBoxProps) {
   const previewRef = useRef<HTMLVideoElement | null>(null);
   const [showTitleOverlay, setShowTitleOverlay] = useState(false);
 
@@ -59,28 +60,39 @@ export function MysteryBox({ disabled, isClicked, videoPreviewSrc, isPlaying, ga
         transition={{ duration: 2.2, repeat: Infinity }}
       />
 
-      <motion.button
-        type="button"
-        disabled={disabled || isPlaying}
-        onClick={onOpen}
-        className="group relative overflow-hidden bg-[linear-gradient(180deg,#09253c_0%,#0d3854_40%,#071b2b_100%)]"
+      <motion.div
+        role={disabled || isPlaying ? undefined : "button"}
+        tabIndex={disabled || isPlaying ? undefined : 0}
+        onClick={disabled || isPlaying ? undefined : onOpen}
+        onKeyDown={(e) => {
+          if (!disabled && !isPlaying && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            onOpen();
+          }
+        }}
+        className="group relative overflow-hidden bg-[linear-gradient(180deg,#09253c_0%,#0d3854_40%,#071b2b_100%)] w-full mx-auto"
         initial={false}
         animate={
           isPlaying 
-            ? { width: "100%", maxWidth: "640px", aspectRatio: "16/9", height: "auto", borderRadius: "24px", boxShadow: "0 0 80px rgba(50,210,255,0.4)" } 
+            ? { width: "100%", maxWidth: "640px", aspectRatio: "16/9", borderRadius: "24px", boxShadow: "0 0 80px rgba(50,210,255,0.4)", cursor: "default" } 
             : isClicked 
-              ? { width: 176, height: 176, borderRadius: "24px", scale: [1, 1.12, 0.96], rotate: [0, -1, 1, 0], boxShadow: ["0 0 40px rgba(50,210,255,0.28)", "0 0 80px rgba(130,242,255,0.75)", "0 0 40px rgba(50,210,255,0.28)"] } 
-              : { width: 176, height: 176, borderRadius: "24px", scale: 1, rotate: 0, boxShadow: "0 0 40px rgba(50,210,255,0.28)" }
+              ? { width: 176, height: 176, maxWidth: "176px", aspectRatio: "1/1", borderRadius: "24px", scale: [1, 1.12, 0.96], rotate: [0, -1, 1, 0], boxShadow: ["0 0 40px rgba(50,210,255,0.28)", "0 0 80px rgba(130,242,255,0.75)", "0 0 40px rgba(50,210,255,0.28)"], cursor: "default" } 
+              : { width: 176, height: 176, maxWidth: "176px", aspectRatio: "1/1", borderRadius: "24px", scale: 1, rotate: 0, boxShadow: "0 0 40px rgba(50,210,255,0.28)", cursor: "pointer" }
         }
+        style={{
+          height: isPlaying ? "auto" : undefined,
+          margin: "0 auto",
+        }}
         transition={isPlaying ? { duration: 0.6, ease: "anticipate" } : isClicked ? { duration: 0.65, ease: "easeInOut" } : { duration: 0.2 }}
         whileHover={disabled || isPlaying ? undefined : { scale: 1.04 }}
         whileTap={disabled || isPlaying ? undefined : { scale: 0.98 }}
       >
+        <motion.div animate={{ paddingTop: isPlaying ? "56.25%" : "0%" }} transition={{ duration: 0.6 }} />
         {videoPreviewSrc && (
           <div className="absolute inset-1 sm:inset-2 overflow-hidden rounded-2xl border border-cyan-200/40">
             <video
               ref={previewRef}
-              className={`h-full w-full object-cover transition-opacity duration-500 ${isPlaying ? 'opacity-100' : 'opacity-65 group-hover:opacity-80'}`}
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${isPlaying ? 'opacity-100' : 'opacity-65 group-hover:opacity-80'}`}
               src={videoPreviewSrc}
               preload={isPlaying ? "auto" : "metadata"}
               playsInline
@@ -88,25 +100,38 @@ export function MysteryBox({ disabled, isClicked, videoPreviewSrc, isPlaying, ga
               onTimeUpdate={() => {
                 if (!previewRef.current || !isPlaying) return;
                 const { currentTime, duration } = previewRef.current;
+                
+                // Show title at 3.8s remaining so it overlays perfectly onto the final white card
                 if (duration > 0 && duration - currentTime <= 3.8) {
-                  if (!showTitleOverlay) setShowTitleOverlay(true);
+                  if (!showTitleOverlay) {
+                    setShowTitleOverlay(true);
+                    if (onEnded) onEnded();
+                  }
                 }
               }}
             />
             {!isPlaying && <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.05)_0%,rgba(0,0,0,0.55)_100%)] pointer-events-none" />}
-            
             {isPlaying && showTitleOverlay && gameTitle && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.8, y: 15 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                className="absolute inset-0 flex items-center justify-center z-[20] pointer-events-none"
+                initial={{ opacity: 0, scale: 0.9, filter: "blur(8px)" }}
+                animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                transition={{ duration: 1.2, ease: "easeOut" }}
+                className="absolute inset-0 flex flex-col items-center justify-center z-[20] pointer-events-none"
               >
-                <div className="bg-[#0a0a0a] text-[#b4ff39] px-6 py-4 rounded-xl max-w-[85%] text-center border border-[rgba(180,255,57,0.4)] shadow-[0_0_20px_rgba(180,255,57,0.3)]">
-                    <h1 className="font-headline text-2xl sm:text-4xl md:text-5xl uppercase tracking-tighter font-black" style={{ letterSpacing: "-0.04em" }}>{gameTitle}</h1>
-                  </div>
+                  <h1 
+                    className="font-headline uppercase font-black text-center w-full" 
+                    style={{ 
+                      letterSpacing: "0.15em", 
+                      color: "#b4f4ff", 
+                      textShadow: "0 0 24px rgba(126,231,255,.7), 0 0 45px rgba(126,231,255,.4)", 
+                      fontSize: "clamp(2rem, 7vw, 4.5rem)" 
+                    }}
+                  >
+                    {gameTitle}
+                  </h1>
               </motion.div>
             )}
+            {children}
           </div>
         )}
         {!isPlaying && (
@@ -119,7 +144,7 @@ export function MysteryBox({ disabled, isClicked, videoPreviewSrc, isPlaying, ga
         {!isPlaying && <div className="absolute inset-0 rounded-3xl bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.26),transparent_42%)] pointer-events-none" />}
         {!isPlaying && <p className="relative z-10 font-headline text-sm font-black tracking-[0.24em] text-cyan-100">MYSTERY BOX</p>}
         {!isPlaying && <p className="relative z-10 mt-2 font-mono text-[10px] tracking-[0.2em] text-cyan-100/75">TAP TO UNLOCK</p>}
-      </motion.button>
+      </motion.div>
     </div>
   );
 }

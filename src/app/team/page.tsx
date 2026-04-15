@@ -8,10 +8,10 @@ import { GAME_CONFIGS } from "./game-panels";
 import { getTestRoundNumber, isTestModeEnabled, setTestRoundNumber } from "@/lib/test-mode";
 import { playSound } from "@/lib/sound-manager";
 import { MysteryBox } from "./components/mystery-box";
-import { default as GamePage } from "../game/[boxId]/page";
 
 import { UnlockVideoOverlay } from "./components/unlock-video-overlay";
 import { RewardReveal } from "./components/reward-reveal";
+import { default as GamePage } from "../game/[boxId]/page";
 
 type GameRecord = {
   id: string;
@@ -74,6 +74,7 @@ type SessionData = {
 type UnlockFlow = "locked" | "unlocked" | "preparing" | "playingVideo" | "revealReward" | "playingGame";
 
 const UNLOCK_VIDEO_SRC = "/unlock-sequence.mp4";
+const PUBLIC_GAME_LABEL = "MYSTERY GAMES";
 const UNLOCK_RULES = [
   "This game is capped at 180 seconds.",
   "Question count always starts from 1.",
@@ -353,15 +354,20 @@ export default function TeamDashboardPage() {
     playSound("start_r1");
 
     if (!testMode) {
-      await fetch("/api/boxes/start", {
+      // Execute in background without blocking navigation
+      fetch("/api/boxes/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamId: session.teamId }),
+      }).catch((err) => {
+        console.error("Box start error:", err);
       });
     }
 
     setBriefingBusy(false);
-    setUnlockFlow("playingGame");
+    setUnlockFlow("unlocked");
+    const id = encodeURIComponent(revealedGame.id);
+    router.push(`/game/${id}`);
   };
 
   useEffect(() => {
@@ -682,41 +688,41 @@ export default function TeamDashboardPage() {
             </p>
           )}
             
-            <div className="mystery-box-scene">
- {unlockFlow === "playingGame" ? (
-   <motion.div
-     className="relative mx-auto w-full flex-col overflow-hidden bg-[linear-gradient(180deg,#09253c_0%,#0d3854_40%,#071b2b_100%)]"
-     style={{
-       maxWidth: "640px",
-       minHeight: "360px",
-       height: "auto",
-       borderRadius: "24px",
-       boxShadow: "0 0 80px rgba(50,210,255,0.4)",
-     }}
-     initial={{ opacity: 0, scale: 0.95 }}
-     animate={{ opacity: 1, scale: 1 }}
-     transition={{ duration: 0.5, ease: "easeOut" }}
-   >
-     <div className="p-4 sm:p-6 custom-scrollbar max-h-[80vh] overflow-y-auto">
-       <GamePage embedded boxId={revealedGame?.id} onGameComplete={() => { setUnlockFlow("unlocked"); setRevealedGame(null); setRevealedOpenRecord(null); }} />
-     </div>
-   </motion.div>
-  ) : (
- <MysteryBox
+            <div className="mystery-box-scene" style={{ overflow: "hidden" }}>
+              <MysteryBox
                 disabled={unlockFlow !== "unlocked"}
                 isClicked={unlockFlow !== "unlocked"}
                 videoPreviewSrc={UNLOCK_VIDEO_SRC}
-                isPlaying={showUnlockVideo}
-                gameTitle={revealedGame?.game_title || "MYSTERY CHALLENGE"}
+                isPlaying={showUnlockVideo || unlockFlow === "revealReward"}
+                gameTitle={PUBLIC_GAME_LABEL}
                 onEnded={() => {
-                  setShowUnlockVideo(false);
-                  void handleStartMission();
+                  setUnlockFlow("revealReward");
                 }}
                 onOpen={() => {
                   void handleBoxClick();
                 }}
-              />
-            )}
+              >
+                <AnimatePresence>
+                  {unlockFlow === "revealReward" && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      transition={{ duration: 0.7, delay: 0.8 }}
+                      className="absolute inset-x-0 bottom-6 sm:bottom-10 z-50 flex flex-col items-center justify-end pointer-events-none"
+                    >
+                      <button
+                        type="button"
+                        className="button-primary scale-110 shadow-[0_0_40px_rgba(180,255,57,0.4)] pointer-events-auto"
+                        style={{ border: "2px solid rgba(180,255,57,0.7)" }}
+                        onClick={() => void handleStartMission()}
+                        disabled={briefingBusy}
+                      >
+                        {briefingBusy ? "STARTING..." : "START"}
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </MysteryBox>
             </div>
         </div>
             )}
