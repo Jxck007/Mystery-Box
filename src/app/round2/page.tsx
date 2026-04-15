@@ -423,9 +423,9 @@ export default function Round2Page() {
                           const lockSeconds = nextAttempt === 3 ? 10 : nextAttempt === 6 ? 30 : 50;
                           setLastLockSeconds(lockSeconds);
                           setLockRemaining(lockSeconds);
-                          setRound2Status(`Wrong code in test mode. Locked for ${lockSeconds}s.`);
+                          setRound2Status("Access denied, Attempts Locked");
                         } else {
-                          setRound2Status(`Invalid code in test mode (use 1234). Attempt ${nextAttempt}.`);
+                          setRound2Status(`OOPS!! Access Denied, Invalid Code - Attempt ${nextAttempt}`);
                         }
                         setRound2Code("");
                       } else {
