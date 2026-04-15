@@ -13,7 +13,6 @@ const SOUND_FILES = {
   Wrong2: "/music/Wrong2.mp3",
   Victory2: "/music/Victory2.mp3",
   Defeat2: "/music/Defeat2.mp3",
-  BoxOpen: "/music/BoxOpen.mp3",
   Gotin: "/music/Gotin.mp3",
   LeaderBoard: "/music/LeaderBoard.mp3",
     WrongStreak2: "/music/WrongStreak2.mp3",
@@ -41,7 +40,6 @@ const EVENT_SOUND_MAP = {
 
   // Shared and utility events used by the app
   start_r1: "Start",
-  box_open: "BoxOpen",
   auth_success: "Gotin",
   team_created: "Create",
   leaderboard_open: "LeaderBoard",
@@ -55,7 +53,7 @@ const EVENT_SOUND_MAP = {
 export type SoundEventName = keyof typeof EVENT_SOUND_MAP | "bootstrap" | "reset_streak";
 
 const HIGH_EVENTS = new Set<SoundEventName>(["win_r1", "lose_r1", "win_r2", "lose_r2"]);
-const MEDIUM_EVENTS = new Set<SoundEventName>(["start_r1", "start_r2", "box_open", "auth_success", "team_created", "leaderboard_open"]);
+const MEDIUM_EVENTS = new Set<SoundEventName>(["start_r1", "start_r2", "auth_success", "team_created", "leaderboard_open"]);
 const LOW_EVENTS = new Set<SoundEventName>(["button_press", "correct_r1", "wrong_r1", "correct_r2", "wrong_r2", "streak", "wrong_streak", "wrong_streak_r2"]);
 
 class SoundManager {

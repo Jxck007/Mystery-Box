@@ -29,11 +29,11 @@ type BoxOpen = {
   status: "pending" | "approved" | "rejected";
 };
 
-export default function GamePage() {
+export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedded = false }: { boxId?: string; onGameComplete?: () => void; embedded?: boolean }) {
   const GAME_CAP_SECONDS = 180;
   const router = useRouter();
   const params = useParams();
-  const boxId = typeof params?.boxId === "string" ? params.boxId : "";
+  const boxId = overrideBoxId || (typeof params?.boxId === "string" ? params.boxId : "");
   const [teamId, setTeamId] = useState<string | null>(null);
   const [game, setGame] = useState<GameRecord | null>(null);
   const [round, setRound] = useState<RoundRecord | null>(null);
@@ -433,11 +433,11 @@ export default function GamePage() {
 
   if (error) {
     return (
-      <main className="page-shell">
+      <main className={embedded ? "w-full" : "page-shell"}>
         <div className="card space-y-3">
           <p className="label">Game status</p>
           <p className="text-sm text-red-400">{error}</p>
-          <button className="button-primary" onClick={() => router.push("/team")}>
+          <button className="button-primary" onClick={() => onGameComplete ? onGameComplete() : router.push("/team")}>
             RETURN TO CONSOLE
           </button>
         </div>
@@ -446,7 +446,7 @@ export default function GamePage() {
   }
 
   return (
-    <main className="page-shell min-h-screen">
+    <main className={embedded ? "w-full flex-1" : "page-shell min-h-screen"}>
       {leaveWarning && (
         <div className="banner ended">
           Leaving the game suspended your team. Only an admin can resume it.
@@ -454,9 +454,11 @@ export default function GamePage() {
       )}
       <header className="card flex-row items-start justify-between gap-4">
         <div className="space-y-2">
-          <button className="button-muted text-xs" onClick={() => router.push("/team")}>
-            ← RETURN
-          </button>
+          {!embedded && (
+            <button className="button-muted text-xs" onClick={() => onGameComplete ? onGameComplete() : router.push("/team")}>
+              ← RETURN
+            </button>
+          )}
           <p className="label">BOX_MISSION_01</p>
           <h1 className="font-headline text-4xl font-black uppercase" style={{ letterSpacing: "-0.04em" }}>
             {game?.game_title ?? "MISSION"}
@@ -541,3 +543,4 @@ export default function GamePage() {
     </main>
   );
 }
+

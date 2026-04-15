@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -8,6 +8,8 @@ import { GAME_CONFIGS } from "./game-panels";
 import { getTestRoundNumber, isTestModeEnabled, setTestRoundNumber } from "@/lib/test-mode";
 import { playSound } from "@/lib/sound-manager";
 import { MysteryBox } from "./components/mystery-box";
+import { default as GamePage } from "../game/[boxId]/page";
+
 import { UnlockVideoOverlay } from "./components/unlock-video-overlay";
 import { RewardReveal } from "./components/reward-reveal";
 
@@ -69,7 +71,7 @@ type SessionData = {
   isLeader: boolean;
 };
 
-type UnlockFlow = "locked" | "unlocked" | "preparing" | "playingVideo" | "revealReward";
+type UnlockFlow = "locked" | "unlocked" | "preparing" | "playingVideo" | "revealReward" | "playingGame";
 
 const UNLOCK_VIDEO_SRC = "/unlock-sequence.mp4";
 const UNLOCK_RULES = [
@@ -359,8 +361,7 @@ export default function TeamDashboardPage() {
     }
 
     setBriefingBusy(false);
-    setUnlockFlow("unlocked");
-    router.push(`/game/${revealedGame.id}`);
+    setUnlockFlow("playingGame");
   };
 
   useEffect(() => {
@@ -422,7 +423,7 @@ export default function TeamDashboardPage() {
 
   setUnlockFlow("preparing");
     setModalError("");
-    playSound("box_open");
+
     setLoading(true);
 
     const openRequest = async (): Promise<{ game: GameRecord | null; open: BoxOpen | null } | null> => {
@@ -492,41 +493,14 @@ export default function TeamDashboardPage() {
     return null;
   }, [round]);
 
-  const cinematicTransitionActive = unlockFlow === "preparing" || unlockFlow === "playingVideo";
-  const hideDashboard = cinematicTransitionActive;
+  const cinematicTransitionActive = unlockFlow === "preparing" || unlockFlow === "playingVideo"
+  const hideDashboard = false;
   const showRound2Prompt = round?.status === "active" && round?.round_number === 2;
   const showRound3Prompt = round?.status === "active" && round?.round_number === 3;
   const isEliminated = Boolean(team?.eliminated_at);
 
   return (
     <main className="page-shell space-y-6">
-      <UnlockVideoOverlay
-        open={showUnlockVideo}
-        videoSrc={UNLOCK_VIDEO_SRC}
-        ruleBook={UNLOCK_RULES}
-        onEnded={() => {
-          setShowUnlockVideo(false);
-          setUnlockFlow("revealReward");
-        }}
-        onPlaybackStart={() => setUnlockFlow("playingVideo")}
-      />
-
-      {unlockFlow === "revealReward" && revealedGame && (
-        <RewardReveal
-          gameTitle={revealedGame.game_title ?? "Mystery Challenge"}
-          gameDescription={revealedGame.game_description}
-          rules={UNLOCK_RULES}
-          onBegin={handleStartMission}
-          onClose={() => {
-            setDismissedRevealOpenId(revealedOpenRecord?.id ?? null);
-            setUnlockFlow("unlocked");
-            setRevealedGame(null);
-            setRevealedOpenRecord(null);
-          }}
-          busy={briefingBusy || !revealedOpenRecord}
-        />
-      )}
-
       <AnimatePresence>
         {!hideDashboard && (
           <motion.div
@@ -707,16 +681,43 @@ export default function TeamDashboardPage() {
               Waiting for admin to start the round.
             </p>
           )}
-          <div className="mystery-box-scene">
-              <MysteryBox
+            
+            <div className="mystery-box-scene">
+ {unlockFlow === "playingGame" ? (
+   <motion.div
+     className="relative mx-auto w-full flex-col overflow-hidden bg-[linear-gradient(180deg,#09253c_0%,#0d3854_40%,#071b2b_100%)]"
+     style={{
+       maxWidth: "640px",
+       minHeight: "360px",
+       height: "auto",
+       borderRadius: "24px",
+       boxShadow: "0 0 80px rgba(50,210,255,0.4)",
+     }}
+     initial={{ opacity: 0, scale: 0.95 }}
+     animate={{ opacity: 1, scale: 1 }}
+     transition={{ duration: 0.5, ease: "easeOut" }}
+   >
+     <div className="p-4 sm:p-6 custom-scrollbar max-h-[80vh] overflow-y-auto">
+       <GamePage embedded boxId={revealedGame?.id} onGameComplete={() => { setUnlockFlow("unlocked"); setRevealedGame(null); setRevealedOpenRecord(null); }} />
+     </div>
+   </motion.div>
+  ) : (
+ <MysteryBox
                 disabled={unlockFlow !== "unlocked"}
                 isClicked={unlockFlow !== "unlocked"}
                 videoPreviewSrc={UNLOCK_VIDEO_SRC}
+                isPlaying={showUnlockVideo}
+                gameTitle={revealedGame?.game_title || "MYSTERY CHALLENGE"}
+                onEnded={() => {
+                  setShowUnlockVideo(false);
+                  void handleStartMission();
+                }}
                 onOpen={() => {
                   void handleBoxClick();
                 }}
               />
-          </div>
+            )}
+            </div>
         </div>
             )}
           </motion.div>
@@ -725,3 +726,5 @@ export default function TeamDashboardPage() {
     </main>
   );
 }
+
+

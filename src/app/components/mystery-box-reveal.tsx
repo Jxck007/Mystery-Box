@@ -118,8 +118,6 @@ export default function MysteryBoxRevealAnimation({
     setIsBursting(false);
     setParticles([]);
 
-    playSound("box_open");
-
     schedule(PHASE_MS.shake, () => {
       setPhase("shake");
     });
@@ -131,7 +129,6 @@ export default function MysteryBoxRevealAnimation({
     schedule(PHASE_MS.burst, () => {
       setIsBursting(true);
       setParticles(buildParticles(44));
-      playSound("box_open");
     });
 
     schedule(PHASE_MS.rise, () => {
@@ -658,3 +655,5 @@ export default function MysteryBoxRevealAnimation({
     </section>
   );
 }
+
+
