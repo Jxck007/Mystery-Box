@@ -10,6 +10,8 @@ type RoundRecord = {
   id: string;
   status: "waiting" | "active" | "paused" | "ended";
   round_number?: number | null;
+  remaining_seconds?: number | null;
+  duration_seconds?: number | null;
 };
 
 type TeamDetail = {
@@ -17,14 +19,33 @@ type TeamDetail = {
   name: string;
   leader_name: string;
   round2_code?: string | null;
+  round2_lock_until?: string | null;
   round2_solved_at?: string | null;
   round2_status?: string | null;
+  pair_battle_enabled?: boolean | null;
 };
 
 type SessionData = {
   teamId: string;
   playerName: string;
   isLeader: boolean;
+};
+
+type PairingStatusRecord = {
+  id: string;
+  status?: string | null;
+  pair_number?: number | null;
+  winner_id?: string | null;
+  team_a_id?: string | null;
+  team_b_id?: string | null;
+  team_a?: { id: string; name: string; leader_name?: string | null } | null;
+  team_b?: { id: string; name: string; leader_name?: string | null } | null;
+};
+
+const TEST_OPPONENT_TEAM = {
+  id: "test-team-rival",
+  name: "SKULL RAIDERS",
+  leader_name: "RIVAL_01",
 };
 
 export default function Round2Page() {
@@ -36,14 +57,16 @@ export default function Round2Page() {
   const [round2Status, setRound2Status] = useState("");
   const [attemptCount, setAttemptCount] = useState(0);
   const [lastLockSeconds, setLastLockSeconds] = useState(10);
+  const [lockRemaining, setLockRemaining] = useState(0);
+  const [activePairingId, setActivePairingId] = useState<string | null>(null);
+  const [activePairing, setActivePairing] = useState<PairingStatusRecord | null>(null);
   const [loading, setLoading] = useState(false);
-  const [round2StartPlayed, setRound2StartPlayed] = useState(false);
-  const round2ResultPlayedRef = useRef(false);
+  const [startPlayed, setStartPlayed] = useState(false);
+  const resultPlayedRef = useRef(false);
   const testMode = isTestModeEnabled();
 
   const playRound2Result = useCallback((qualified: boolean) => {
-    // Mark as played immediately to prevent duplicate playback on subsequent state refresh.
-    round2ResultPlayedRef.current = true;
+    resultPlayedRef.current = true;
     playSound("correct_r2");
     window.setTimeout(() => {
       playSound(qualified ? "win_r2" : "lose_r2");
@@ -53,17 +76,16 @@ export default function Round2Page() {
   const fetchRound = useCallback(async () => {
     if (!session) return;
     if (testMode) {
-      setRound({ id: "test-round2", status: "active", round_number: 2 });
+      setRound({ id: "test-round2", status: "active", round_number: 2, duration_seconds: 180, remaining_seconds: 147 });
       setLoading(false);
       return;
     }
+
     setLoading(true);
-    const response = await fetch(`/api/boxes?teamId=${session.teamId}`, {
-      cache: "no-store",
-    });
-    const payload = await response.json();
+    const response = await fetch(`/api/boxes?teamId=${session.teamId}`, { cache: "no-store" });
+    const payload = await response.json().catch(() => null);
     if (response.ok) {
-      setRound(payload.round ?? null);
+      setRound(payload?.round ?? null);
     }
     setLoading(false);
   }, [session, testMode]);
@@ -77,11 +99,13 @@ export default function Round2Page() {
         leader_name: "TEST_OPERATOR",
         round2_code: "1234",
         round2_status: "pending",
+        pair_battle_enabled: true,
       });
       return;
     }
+
     const response = await fetch("/api/teams/list?includeInactive=true");
-    const data = await response.json();
+    const data = await response.json().catch(() => null);
     if (response.ok && Array.isArray(data)) {
       const matching = data.find((entry) => entry.id === session.teamId);
       if (matching) {
@@ -90,10 +114,67 @@ export default function Round2Page() {
     }
   }, [session, testMode]);
 
+  const fetchActivePairing = useCallback(async () => {
+    if (!session || !round?.id || !team?.pair_battle_enabled) {
+      setActivePairing(null);
+      setActivePairingId(null);
+      return;
+    }
+
+    if (testMode) {
+      const demoPairing: PairingStatusRecord = {
+        id: "test-pair-1",
+        status: "in_progress",
+        pair_number: 1,
+        winner_id: null,
+        team_a_id: session.teamId,
+        team_b_id: TEST_OPPONENT_TEAM.id,
+        team_a: { id: session.teamId, name: team?.name ?? "TEST COLLECTIVE", leader_name: team?.leader_name ?? "TEST_OPERATOR" },
+        team_b: TEST_OPPONENT_TEAM,
+      };
+      setActivePairing(demoPairing);
+      setActivePairingId(demoPairing.id);
+      return;
+    }
+
+    const { data } = await supabaseBrowser.auth.getSession();
+    if (!data.session) {
+      setActivePairing(null);
+      setActivePairingId(null);
+      return;
+    }
+
+    const response = await fetch(`/api/admin/pair-battle/status?roundId=${round.id}`, {
+      headers: {
+        Authorization: `Bearer ${data.session.access_token}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      setActivePairing(null);
+      setActivePairingId(null);
+      return;
+    }
+
+    const payload = await response.json().catch(() => null);
+    const pairings: PairingStatusRecord[] = Array.isArray(payload?.pairings)
+      ? (payload.pairings as PairingStatusRecord[])
+      : [];
+
+    const teamPair = pairings.find((pairing) =>
+      pairing.team_a_id === session.teamId || pairing.team_b_id === session.teamId,
+    ) ?? null;
+
+    setActivePairing(teamPair);
+    setActivePairingId(teamPair?.id ?? null);
+  }, [round?.id, session, team?.leader_name, team?.name, team?.pair_battle_enabled, testMode]);
+
   useEffect(() => {
     const storedTeamId = localStorage.getItem("team_id");
     const storedPlayer = localStorage.getItem("player_name");
     const leaderFlag = localStorage.getItem("is_leader");
+
     if (!storedTeamId || !storedPlayer) {
       if (testMode) {
         localStorage.setItem("team_id", "test-team");
@@ -105,6 +186,7 @@ export default function Round2Page() {
       router.replace("/");
       return;
     }
+
     setSession({
       teamId: storedTeamId,
       playerName: storedPlayer,
@@ -114,33 +196,85 @@ export default function Round2Page() {
 
   useEffect(() => {
     if (!session) return;
-    fetchRound();
-    fetchTeam();
-  }, [session, fetchRound, fetchTeam]);
+    void fetchRound();
+    void fetchTeam();
+  }, [fetchRound, fetchTeam, session]);
+
+  useEffect(() => {
+    void fetchActivePairing();
+  }, [fetchActivePairing]);
+
+  useEffect(() => {
+    if (lockRemaining <= 0) return;
+    const id = window.setInterval(() => {
+      setLockRemaining((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [lockRemaining]);
 
   useEffect(() => {
     if (!round) return;
-    if (round.status !== "active" || round.round_number !== 2) {
+    const hasResult = Boolean(team?.round2_solved_at && team?.round2_status);
+    if (!hasResult && (round.status !== "active" || round.round_number !== 2)) {
       router.replace("/team");
     }
-  }, [round, router]);
+  }, [round, router, team?.round2_solved_at, team?.round2_status]);
 
   useEffect(() => {
-    if (round2StartPlayed) return;
+    if (startPlayed) return;
     if (round?.status !== "active" || round.round_number !== 2) return;
+    playSound("reset_streak");
     playSound("start_r2");
-    setRound2StartPlayed(true);
-  }, [round, round2StartPlayed]);
+    setStartPlayed(true);
+  }, [round, startPlayed]);
+
+  useEffect(() => {
+    if (!startPlayed) return;
+    if (team?.round2_solved_at) return;
+    const intervalId = window.setInterval(() => {
+      playSound("start_r2");
+    }, 24000);
+    return () => window.clearInterval(intervalId);
+  }, [startPlayed, team?.round2_solved_at]);
+
+  useEffect(() => {
+    if (!team?.round2_lock_until) return;
+
+    const lockUntilMs = new Date(team.round2_lock_until).getTime();
+    if (!Number.isFinite(lockUntilMs)) return;
+
+    const remaining = Math.max(0, Math.ceil((lockUntilMs - Date.now()) / 1000));
+    if (remaining > 0) {
+      setLockRemaining((prev) => (prev > remaining ? prev : remaining));
+      setLastLockSeconds(remaining);
+      setRound2Status((prev) => prev || `Locked. Try again in ${remaining}s.`);
+    }
+  }, [team?.round2_lock_until]);
 
   useEffect(() => {
     if (!team?.round2_solved_at || !team.round2_status) {
-      round2ResultPlayedRef.current = false;
+      resultPlayedRef.current = false;
       return;
     }
-    if (round2ResultPlayedRef.current) return;
-    round2ResultPlayedRef.current = true;
-    playSound(team.round2_status === "qualified" ? "win_r2" : "lose_r2");
+
+    if (resultPlayedRef.current) return;
+    resultPlayedRef.current = true;
+
+    const qualified = team.round2_status === "qualified";
+    playSound(qualified ? "win_r2" : "lose_r2");
+    sessionStorage.setItem("post_round2_result_sound", qualified ? "win_r2" : "lose_r2");
   }, [team?.round2_solved_at, team?.round2_status]);
+
+  const opponentName = (() => {
+    if (!activePairing || !session) return null;
+    if (activePairing.team_a_id === session.teamId) return activePairing.team_b?.name ?? "Unknown";
+    if (activePairing.team_b_id === session.teamId) return activePairing.team_a?.name ?? "Unknown";
+    return null;
+  })();
+
+  const pairLabel = activePairing?.pair_number ?? null;
+  const solvedQualified = Boolean(team?.round2_solved_at && team.round2_status === "qualified");
+  const solvedEliminated = Boolean(team?.round2_solved_at && team.round2_status !== "qualified");
 
   return (
     <main className="page-shell min-h-screen">
@@ -150,6 +284,7 @@ export default function Round2Page() {
           CRACK / THE / CODE
         </h1>
       </div>
+
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         <section className="md:col-span-7 card space-y-5">
           <div className="card py-4" style={{ borderLeft: "3px solid var(--accent)" }}>
@@ -161,18 +296,31 @@ export default function Round2Page() {
               ENTER THE ADMIN-ASSIGNED 4-DIGIT AUTHORIZATION SEQUENCE.
             </p>
           </div>
-          {!team?.round2_code ? (
+
+          {solvedQualified ? (
             <div className="banner paused">
-              AWAITING INPUT: ADMIN CODE NOT ASSIGNED.
+              <p className="font-semibold">Victory confirmed. You cracked before your archenemy.</p>
+              <p className="mt-2">Qualified for next stage.</p>
+              <button className="button-secondary mt-3" onClick={() => router.push("/team")}>Continue</button>
             </div>
-          ) : team?.round2_solved_at ? (
-            <div className="banner paused">
-              SESSION TERMINATED. {team.round2_status === "qualified"
-                ? "OBJECTIVE COMPLETE: ROUND 3 ACCESS GRANTED."
-                : "OBJECTIVE COMPLETE: QUALIFICATION CAP REACHED."}
+          ) : solvedEliminated ? (
+            <div className="banner ended">
+              <p className="font-semibold">Your Archenemy Cracked Before You</p>
+              <p className="mt-2">You have been eliminated from Round 2.</p>
+              <button className="button-danger mt-3" onClick={() => router.push("/leaderboard")}>Return To Leaderboard</button>
             </div>
+          ) : !team?.round2_code ? (
+            <div className="banner paused">AWAITING INPUT: ADMIN CODE NOT ASSIGNED.</div>
           ) : (
             <div className="space-y-4">
+              <div className="card py-3" style={{ border: "1px solid rgba(88,175,255,0.35)" }}>
+                <p className="label">BATTLE BRIEF</p>
+                <p className="font-mono text-sm">Your Archenemy Is: {opponentName ?? "Awaiting pairing"}</p>
+                <p className="font-mono text-xs text-[var(--text-muted)] mt-1">
+                  {pairLabel ? `Battle Pair ${pairLabel}` : "Pair assignment pending"} / Crack the code before them.
+                </p>
+              </div>
+
               <div className="flex gap-3 justify-start">
                 {Array.from({ length: 4 }).map((_, index) => (
                   <span key={index} className={`code-slot ${round2Code[index] ? "" : "empty"}`}>
@@ -180,6 +328,7 @@ export default function Round2Page() {
                   </span>
                 ))}
               </div>
+
               <div className="code-keypad">
                 {Array.from({ length: 9 }).map((_, index) => {
                   const value = index + 1;
@@ -196,6 +345,7 @@ export default function Round2Page() {
                     </button>
                   );
                 })}
+
                 <button type="button" className="keypad-btn clear" onClick={() => setRound2Code("")}>CLEAR</button>
                 <button
                   type="button"
@@ -213,67 +363,87 @@ export default function Round2Page() {
                     if (testMode) {
                       if (round2Code !== "1234") {
                         playSound("wrong_r2");
+                        const nextAttempt = attemptCount + 1;
+                        setAttemptCount(nextAttempt);
+                        if (nextAttempt % 3 === 0) {
+                          const lockSeconds = nextAttempt === 3 ? 10 : nextAttempt === 6 ? 30 : 50;
+                          setLastLockSeconds(lockSeconds);
+                          setLockRemaining(lockSeconds);
+                          setRound2Status(`Wrong code in test mode. Locked for ${lockSeconds}s.`);
+                        } else {
+                          setRound2Status(`Invalid code in test mode (use 1234). Attempt ${nextAttempt}.`);
+                        }
                         setRound2Code("");
                       } else {
                         playRound2Result(true);
+                        setRound2Status("Code accepted in test mode. Battle won.");
                       }
-                      setRound2Status(
-                        round2Code === "1234"
-                          ? "Code accepted. You qualified for Round 3."
-                          : "Invalid code in test mode (use 1234).",
-                      );
                       return;
                     }
+
                     setRound2Status("");
                     const { data } = await supabaseBrowser.auth.getSession();
                     if (!data.session) {
                       setRound2Status("Please sign in again.");
                       return;
                     }
-                    const response = await fetch("/api/round2/submit", {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${data.session.access_token}`,
+
+                    const usePairBattleSubmit = Boolean(team?.pair_battle_enabled && activePairingId);
+                    const response = await fetch(
+                      usePairBattleSubmit ? "/api/round2/pair-submit" : "/api/round2/submit",
+                      {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          Authorization: `Bearer ${data.session.access_token}`,
+                        },
+                        body: JSON.stringify(
+                          usePairBattleSubmit
+                            ? { code: round2Code, pairingId: activePairingId }
+                            : { code: round2Code },
+                        ),
                       },
-                      body: JSON.stringify({ code: round2Code }),
-                    });
-                    const payload = await response.json();
+                    );
+
+                    const payload = await response.json().catch(() => ({}));
                     if (!response.ok) {
-                      playSound("wrong_r2");
+                      playSound(typeof payload.lockSeconds === "number" ? "round2_lockout" : "wrong_r2");
                       setRound2Code("");
                       if (typeof payload.attempt === "number") {
                         setAttemptCount(payload.attempt);
                       }
                       if (typeof payload.lockSeconds === "number") {
                         setLastLockSeconds(payload.lockSeconds);
+                        setLockRemaining(payload.lockSeconds);
                       } else {
                         setLastLockSeconds(0);
+                        setLockRemaining(0);
                       }
                       setRound2Status(payload.error ?? "Unable to submit code");
+                      await fetchTeam();
                       return;
                     }
-                    playRound2Result(Boolean(payload.qualified));
-                    setRound2Status(
-                      payload.qualified
-                        ? "Code accepted. You qualified for Round 3."
-                        : "Code accepted, but slots are full.",
-                    );
+
+                    setLockRemaining(0);
+                    const isWin = payload.result === "win" || payload.qualified === true;
+                    playRound2Result(isWin);
+                    setRound2Status(payload.message ?? (isWin ? "Code accepted. You won this battle." : "Code accepted."));
+                    await fetchTeam();
+                    await fetchActivePairing();
                   }}
-                  disabled={round2Code.length !== 4}
+                  disabled={round2Code.length !== 4 || lockRemaining > 0}
                 >
-                  INITIALIZE
+                  {lockRemaining > 0 ? `LOCKED ${lockRemaining}s` : "INITIALIZE"}
                 </button>
               </div>
-              {round2Status && (
-                <p className="text-sm text-[var(--text-muted)]">{round2Status}</p>
-              )}
+
+              {round2Status && <p className="text-sm text-[var(--text-muted)]">{round2Status}</p>}
             </div>
           )}
-          {loading && (
-            <p className="text-sm text-[var(--text-muted)]">Refreshing round status...</p>
-          )}
+
+          {loading && <p className="text-sm text-[var(--text-muted)]">Refreshing round status...</p>}
         </section>
+
         <aside className="md:col-span-5 space-y-4">
           <div className="card space-y-4" style={{ background: "var(--bg-high)" }}>
             <div className="flex items-center justify-between gap-3">
@@ -292,16 +462,32 @@ export default function Round2Page() {
                 <p className="font-mono text-xs">{round?.round_number ?? 2}</p>
               </div>
               <div>
+                <p className="label">COUNTDOWN</p>
+                <p className="font-mono text-xs">
+                  {typeof round?.remaining_seconds === "number"
+                    ? `${Math.floor(Math.max(0, round.remaining_seconds) / 60)}:${String(Math.max(0, round.remaining_seconds) % 60).padStart(2, "0")}`
+                    : "DISABLED"}
+                </p>
+              </div>
+              <div>
                 <p className="label">TEAM STATUS</p>
                 <p className="font-mono text-xs">
                   {team?.round2_solved_at
                     ? team.round2_status === "qualified"
-                      ? "QUALIFIED"
-                      : "SOLVED / FULL"
+                      ? "WINNER"
+                      : "ELIMINATED"
                     : team?.round2_code
-                      ? "CODE ASSIGNED"
-                      : "WAITING"}
+                    ? "CODE ASSIGNED"
+                    : "WAITING"}
                 </p>
+              </div>
+              <div>
+                <p className="label">PAIR</p>
+                <p className="font-mono text-xs">{pairLabel ? `#${pairLabel}` : "PENDING"}</p>
+              </div>
+              <div>
+                <p className="label">ARCHENEMY</p>
+                <p className="font-mono text-xs">{opponentName ?? "PENDING"}</p>
               </div>
               <div>
                 <p className="label">CODE SLOTS</p>
@@ -323,10 +509,11 @@ export default function Round2Page() {
               {team?.round2_solved_at
                 ? "ROUND 2 SUBMISSION LOCKED FOR THIS UNIT."
                 : team?.round2_code
-                  ? "ENTER 4-DIGIT CODE. FIRST QUALIFIED UNITS ADVANCE."
-                  : "AWAITING INPUT: ADMIN CODE NOT ASSIGNED."}
+                ? "ENTER 4-DIGIT CODE. FIRST TEAM TO CRACK WINS THE PAIR."
+                : "AWAITING INPUT: ADMIN CODE NOT ASSIGNED."}
             </div>
           </div>
+
           <div className="card space-y-3">
             <div>
               <p className="label">CRACK PROGRESS</p>
@@ -343,15 +530,14 @@ export default function Round2Page() {
               {attemptCount === 0
                 ? "Lock applies every 3 wrong attempts: 10s, then 30s, then 50s, and so on."
                 : lastLockSeconds > 0
-                  ? `Attempt ${attemptCount}. Current lock: ${lastLockSeconds}s.`
-                  : `Attempt ${attemptCount}. No active lock.`}
+                ? `Attempt ${attemptCount}. Current lock: ${lastLockSeconds}s.`
+                : `Attempt ${attemptCount}. No active lock.`}
             </div>
-            <button className="button-secondary" onClick={() => router.push("/leaderboard")}>
-              VIEW LEADERBOARD
-            </button>
+            <button className="button-secondary" onClick={() => router.push("/leaderboard")}>VIEW LEADERBOARD</button>
           </div>
         </aside>
       </div>
+
       <footer className="card py-3">
         <div className="flex flex-wrap items-center gap-3">
           <span className="inline-block w-2 h-2 bg-[var(--accent)]" style={{ animation: "pulse-dot 1.2s ease-in-out infinite" }} />

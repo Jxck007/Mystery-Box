@@ -69,7 +69,7 @@ type SessionData = {
   isLeader: boolean;
 };
 
-type UnlockFlow = "locked" | "unlocked" | "clicked" | "transition_out" | "video" | "revealed";
+type UnlockFlow = "locked" | "unlocked" | "preparing" | "playingVideo" | "revealReward";
 
 const UNLOCK_VIDEO_SRC = "/unlock-sequence.mp4";
 const UNLOCK_RULES = [
@@ -109,6 +109,21 @@ export default function TeamDashboardPage() {
   const [dismissedRevealOpenId, setDismissedRevealOpenId] = useState<string | null>(null);
   const [testMode, setTestMode] = useState(false);
   const [testModeReady, setTestModeReady] = useState(false);
+
+  useEffect(() => {
+    // Prime browser cache so the unlock animation video starts faster on first play.
+    const preloadLink = document.createElement("link");
+    preloadLink.rel = "preload";
+    preloadLink.as = "video";
+    preloadLink.href = UNLOCK_VIDEO_SRC;
+    document.head.appendChild(preloadLink);
+
+    return () => {
+      if (preloadLink.parentNode) {
+        preloadLink.parentNode.removeChild(preloadLink);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setTestMode(isTestModeEnabled());
@@ -319,32 +334,15 @@ export default function TeamDashboardPage() {
   useEffect(() => {
     const isRoundOneUnlocked = round?.round_number === 1 && round.status === "active";
     if (!isRoundOneUnlocked) {
-      if (unlockFlow !== "video" && unlockFlow !== "revealed") {
-        setUnlockFlow("locked");
-      }
-      return;
-    }
-
-    if (currentOpen && currentGame) {
-      setRevealedGame(currentGame);
-      setRevealedOpenRecord(currentOpen);
-      if (unlockFlow !== "video" && dismissedRevealOpenId !== currentOpen.id) {
-        setUnlockFlow("revealed");
-      }
-      return;
-    }
-
-    if (unlockFlow === "revealed") {
-      setRevealedGame(null);
-      setRevealedOpenRecord(null);
-      setUnlockFlow("unlocked");
+      setShowUnlockVideo(false);
+      setUnlockFlow("locked");
       return;
     }
 
     if (unlockFlow === "locked") {
       setUnlockFlow("unlocked");
     }
-  }, [currentGame, currentOpen, round, unlockFlow, dismissedRevealOpenId]);
+  }, [round, unlockFlow]);
 
   const handleStartMission = async () => {
     if (!session || !revealedGame) return;
@@ -422,7 +420,7 @@ export default function TeamDashboardPage() {
       return;
     }
 
-    setUnlockFlow("clicked");
+  setUnlockFlow("preparing");
     setModalError("");
     playSound("box_open");
     setLoading(true);
@@ -469,10 +467,8 @@ export default function TeamDashboardPage() {
     setDismissedRevealOpenId(null);
     setRevealedGame(openResult.game);
     setRevealedOpenRecord(openResult.open);
-    setUnlockFlow("transition_out");
-    await wait(650);
+    setUnlockFlow("playingVideo");
     setShowUnlockVideo(true);
-    setUnlockFlow("video");
 
     setLoading(false);
   };
@@ -496,7 +492,7 @@ export default function TeamDashboardPage() {
     return null;
   }, [round]);
 
-  const cinematicTransitionActive = unlockFlow === "transition_out" || unlockFlow === "video";
+  const cinematicTransitionActive = unlockFlow === "preparing" || unlockFlow === "playingVideo";
   const hideDashboard = cinematicTransitionActive;
   const showRound2Prompt = round?.status === "active" && round?.round_number === 2;
   const showRound3Prompt = round?.status === "active" && round?.round_number === 3;
@@ -504,16 +500,7 @@ export default function TeamDashboardPage() {
 
   return (
     <main className="page-shell space-y-6">
-      <UnlockVideoOverlay
-        open={showUnlockVideo}
-        videoSrc={UNLOCK_VIDEO_SRC}
-        onEnded={() => {
-          setShowUnlockVideo(false);
-          setUnlockFlow("revealed");
-        }}
-      />
-
-      {unlockFlow === "revealed" && revealedGame && (
+      {unlockFlow === "revealReward" && revealedGame && (
         <RewardReveal
           gameTitle={revealedGame.game_title ?? "Mystery Challenge"}
           gameDescription={revealedGame.game_description}
@@ -522,6 +509,8 @@ export default function TeamDashboardPage() {
           onClose={() => {
             setDismissedRevealOpenId(revealedOpenRecord?.id ?? null);
             setUnlockFlow("unlocked");
+            setRevealedGame(null);
+            setRevealedOpenRecord(null);
           }}
           busy={briefingBusy || !revealedOpenRecord}
         />
@@ -708,13 +697,30 @@ export default function TeamDashboardPage() {
             </p>
           )}
           <div className="mystery-box-scene">
-            <MysteryBox
-              disabled={unlockFlow !== "unlocked"}
-              isClicked={unlockFlow === "clicked"}
-              onOpen={() => {
-                void handleBoxClick();
-              }}
-            />
+            {showUnlockVideo ? (
+              <div className="mx-auto w-full max-w-3xl space-y-4">
+                <UnlockVideoOverlay
+                  inline
+                  open={showUnlockVideo}
+                  videoSrc={UNLOCK_VIDEO_SRC}
+                  ruleBook={UNLOCK_RULES}
+                  onEnded={() => {
+                    setShowUnlockVideo(false);
+                    setUnlockFlow("revealReward");
+                  }}
+                  onPlaybackStart={() => setUnlockFlow("playingVideo")}
+                />
+              </div>
+            ) : (
+              <MysteryBox
+                disabled={unlockFlow !== "unlocked"}
+                isClicked={unlockFlow !== "unlocked"}
+                videoPreviewSrc={UNLOCK_VIDEO_SRC}
+                onOpen={() => {
+                  void handleBoxClick();
+                }}
+              />
+            )}
           </div>
         </div>
             )}

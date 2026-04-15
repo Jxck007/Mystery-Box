@@ -170,14 +170,22 @@ export default function GamePage() {
       setScoreInput((prev) => prev + gained);
       setFeedback(`Correct +${gained}`);
     } else {
+      const hadMajorStreak = streakRef.current >= 3;
       playSound("wrong_r1");
+      if (hadMajorStreak) {
+        window.setTimeout(() => playSound("round1_streak_defeated"), 100);
+      }
       const penalty = 3;
       setStreakCount(0);
       setScoreInput((prev) => prev - penalty);
       setFeedback(
-        result.details === "skipped"
-          ? "Skipped -3"
-          : "Wrong -3",
+        hadMajorStreak
+          ? result.details === "skipped"
+            ? "Streak defeated (skip) -3"
+            : "Streak defeated -3"
+          : result.details === "skipped"
+            ? "Skipped -3"
+            : "Wrong -3",
       );
     }
     setQuestionIndex((prev) => prev + 1);

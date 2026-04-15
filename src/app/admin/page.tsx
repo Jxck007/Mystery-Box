@@ -76,6 +76,7 @@ export default function AdminDashboardPage() {
   const [actionBusy, setActionBusy] = useState<Record<string, boolean>>({});
   const [eventLogs, setEventLogs] = useState<TeamEventLog[]>([]);
   const [expandedTeamLogs, setExpandedTeamLogs] = useState<Record<string, boolean>>({});
+  const [pairBattleFocusTick, setPairBattleFocusTick] = useState(0);
 
   const getAdminHeaders = useCallback(async () => {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -90,38 +91,59 @@ export default function AdminDashboardPage() {
 
   const handleUnauthorized = useCallback(() => {
     setAuthorized(false);
-    supabaseBrowser.auth.signOut().catch(() => null);
-    router.replace("/auth?redirect=/admin");
+    router.replace("/admin-entry");
   }, [router]);
 
-  useEffect(() => {
-    const verifySession = async () => {
-      const { data } = await supabaseBrowser.auth.getSession();
-      if (!data.session) {
+  const handleAdminLocked = useCallback(() => {
+    setAuthorized(false);
+    router.replace("/admin-entry");
+  }, [router]);
+
+  const handleAdminAuthResponse = useCallback(
+    (response: Response) => {
+      if (response.status === 401) {
         handleUnauthorized();
+        return true;
+      }
+      if (response.status === 403) {
+        handleAdminLocked();
+        return true;
+      }
+      return false;
+    },
+    [handleUnauthorized, handleAdminLocked],
+  );
+
+  const handleLockConsole = useCallback(async () => {
+    await fetch("/api/admin/session", { method: "DELETE" }).catch(() => null);
+    handleAdminLocked();
+  }, [handleAdminLocked]);
+
+  useEffect(() => {
+    const verifyAdminUnlock = async () => {
+      const response = await fetch("/api/admin/session", { cache: "no-store" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.unlocked) {
+        handleUnauthorized();
+        return;
       }
     };
-    verifySession();
+    verifyAdminUnlock();
   }, [handleUnauthorized]);
 
   const fetchRounds = useCallback(async () => {
     const adminHeaders = await getAdminHeaders();
-    if (!adminHeaders) {
-      handleUnauthorized();
-      return;
-    }
     const response = await fetch("/api/admin/rounds/list", {
-      headers: adminHeaders,
+      headers: adminHeaders ?? undefined,
     });
-    if (response.status === 401) {
-      handleUnauthorized();
+    if (handleAdminAuthResponse(response)) {
       return;
     }
     const payload = await response.json();
     if (response.ok && Array.isArray(payload)) {
       setRounds(payload);
     }
-  }, [getAdminHeaders, handleUnauthorized]);
+  }, [getAdminHeaders, handleAdminAuthResponse]);
 
   const fetchLeaderboard = useCallback(async () => {
     const response = await fetch("/api/leaderboard");
@@ -141,23 +163,18 @@ export default function AdminDashboardPage() {
 
   const fetchEventLogs = useCallback(async () => {
     const adminHeaders = await getAdminHeaders();
-    if (!adminHeaders) {
-      handleUnauthorized();
-      return;
-    }
     const response = await fetch("/api/admin/events", {
-      headers: adminHeaders,
+      headers: adminHeaders ?? undefined,
       cache: "no-store",
     });
-    if (response.status === 401) {
-      handleUnauthorized();
+    if (handleAdminAuthResponse(response)) {
       return;
     }
     const data = await response.json().catch(() => []);
     if (response.ok && Array.isArray(data)) {
       setEventLogs(data);
     }
-  }, [getAdminHeaders, handleUnauthorized]);
+  }, [getAdminHeaders, handleAdminAuthResponse]);
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
@@ -256,18 +273,13 @@ export default function AdminDashboardPage() {
     }
 
     const adminHeaders = await getAdminHeaders();
-    if (!adminHeaders) {
-      handleUnauthorized();
-      return;
-    }
 
     const response = await fetch("/api/admin/rounds/update", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...adminHeaders },
+      headers: { "Content-Type": "application/json", ...(adminHeaders ?? {}) },
       body: JSON.stringify(payload),
     });
-    if (response.status === 401) {
-      handleUnauthorized();
+    if (handleAdminAuthResponse(response)) {
       return;
     }
     const data = await response.json();
@@ -303,19 +315,14 @@ export default function AdminDashboardPage() {
     }
 
     const adminHeaders = await getAdminHeaders();
-    if (!adminHeaders) {
-      handleUnauthorized();
-      return;
-    }
 
     const response = await fetch("/api/admin/scores/update", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...adminHeaders },
+      headers: { "Content-Type": "application/json", ...(adminHeaders ?? {}) },
       body: JSON.stringify(payload),
     });
 
-    if (response.status === 401) {
-      handleUnauthorized();
+    if (handleAdminAuthResponse(response)) {
       return;
     }
 
@@ -341,18 +348,13 @@ export default function AdminDashboardPage() {
       setStatusMessage("Syncing command...");
     }
     const adminHeaders = await getAdminHeaders();
-    if (!adminHeaders) {
-      handleUnauthorized();
-      return;
-    }
 
     const response = await fetch("/api/admin/teams/remove", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...adminHeaders },
+      headers: { "Content-Type": "application/json", ...(adminHeaders ?? {}) },
       body: JSON.stringify({ teamId }),
     });
-    if (response.status === 401) {
-      handleUnauthorized();
+    if (handleAdminAuthResponse(response)) {
       return;
     }
     setStatusMessage("Team removed.");
@@ -372,18 +374,13 @@ export default function AdminDashboardPage() {
       setStatusMessage("Syncing command...");
     }
     const adminHeaders = await getAdminHeaders();
-    if (!adminHeaders) {
-      handleUnauthorized();
-      return;
-    }
 
     const response = await fetch("/api/admin/teams/restore", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...adminHeaders },
+      headers: { "Content-Type": "application/json", ...(adminHeaders ?? {}) },
       body: JSON.stringify({ teamId, action }),
     });
-    if (response.status === 401) {
-      handleUnauthorized();
+    if (handleAdminAuthResponse(response)) {
       return;
     }
     const data = await response.json().catch(() => ({}));
@@ -417,19 +414,14 @@ export default function AdminDashboardPage() {
     );
 
     const adminHeaders = await getAdminHeaders();
-    if (!adminHeaders) {
-      handleUnauthorized();
-      return;
-    }
 
     const response = await fetch("/api/admin/elimination/apply", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...adminHeaders },
+      headers: { "Content-Type": "application/json", ...(adminHeaders ?? {}) },
       body: JSON.stringify({ roundNumber }),
     });
 
-    if (response.status === 401) {
-      handleUnauthorized();
+    if (handleAdminAuthResponse(response)) {
       return;
     }
 
@@ -442,9 +434,18 @@ export default function AdminDashboardPage() {
 
     setStatusMessage(
       roundNumber === 1
-        ? `Round 1 elimination applied. Top ${ROUND1_SURVIVOR_LIMIT} remain active.`
+        ? `Round 1 elimination applied. Top ${ROUND1_SURVIVOR_LIMIT} remain active. Round 2 Pair Battle setup unlocked.`
         : `Round 2 elimination applied. First ${ROUND2_QUALIFY_LIMIT} solved teams qualified.`,
     );
+
+    if (roundNumber === 1) {
+      setSelectedRoundNumber(2);
+      setPairBattleFocusTick((prev) => prev + 1);
+      window.setTimeout(() => {
+        document.getElementById("pair-battle-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 120);
+    }
+
     await refreshAll();
     setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
   };
@@ -573,6 +574,10 @@ export default function AdminDashboardPage() {
     );
   }, [rounds, selectedRoundNumber, activeRoundNumber]);
 
+  const round2Record = useMemo(() => {
+    return rounds.find((round) => round.round_number === 2) ?? null;
+  }, [rounds]);
+
   const isSelectedRoundAvailable = useMemo(() => {
     if (!selectedRound?.round_number) return false;
     return availableRounds.includes(selectedRound.round_number);
@@ -639,7 +644,7 @@ export default function AdminDashboardPage() {
             </div>
           ))}
         </nav>
-        <button className="button-primary" style={{ width: "100%", marginTop: "auto" }} onClick={handleUnauthorized}>
+        <button className="button-primary" style={{ width: "100%", marginTop: "auto" }} onClick={handleLockConsole}>
           LOCK_CONSOLE
         </button>
       </aside>
@@ -1040,19 +1045,6 @@ export default function AdminDashboardPage() {
                   </button>
                 );
               })()}
-              {(() => {
-                const busyKey = "elimination-round2";
-                const busy = actionBusy[busyKey];
-                return (
-                  <button
-                    className="admin-action-button button-danger"
-                    onClick={() => handleApplyElimination(2, busyKey)}
-                    disabled={busy || round2SolvedCount === 0}
-                  >
-                    {busy ? "Syncing..." : `Apply Round 2 Cut (First ${ROUND2_QUALIFY_LIMIT})`}
-                  </button>
-                );
-              })()}
             </div>
         <div className="overflow-x-auto">
           <table className="leaderboard-table">
@@ -1126,12 +1118,14 @@ export default function AdminDashboardPage() {
           </table>
         </div>
       </div>
-      {selectedRound && (
-        <PairBattleBoard 
-          roundId={selectedRound.id} 
-          onStatusChange={setStatusMessage} 
-          getAdminHeaders={getAdminHeaders}
-        />
+      {round2Record && (
+        <div id="pair-battle-panel" data-focus-tick={pairBattleFocusTick}>
+          <PairBattleBoard
+            roundId={round2Record.id}
+            onStatusChange={setStatusMessage}
+            getAdminHeaders={getAdminHeaders}
+          />
+        </div>
       )}
           <div className="card">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

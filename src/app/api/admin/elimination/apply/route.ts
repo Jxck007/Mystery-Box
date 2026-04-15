@@ -40,6 +40,12 @@ export async function POST(request: NextRequest) {
     const survivors = teams?.slice(0, ROUND1_SURVIVOR_LIMIT) ?? [];
     const eliminated = teams?.slice(ROUND1_SURVIVOR_LIMIT) ?? [];
 
+    const { data: round2 } = await supabase
+      .from("rounds")
+      .select("id")
+      .eq("round_number", 2)
+      .maybeSingle();
+
     if (survivors.length > 0) {
       const { error: survivorError } = await supabase
         .from("teams")
@@ -48,12 +54,24 @@ export async function POST(request: NextRequest) {
           eliminated_at: null,
           eliminated_round: null,
           eliminated_position: null,
+          round2_status: "pending",
+          round2_solved_at: null,
+          round2_lock_until: null,
+          pair_battle_enabled: false,
         })
         .in("id", survivors.map((team) => team.id));
 
       if (survivorError) {
         return NextResponse.json({ error: survivorError.message }, { status: 500 });
       }
+
+      await supabase.from("team_events").insert(
+        survivors.map((team) => ({
+          team_id: team.id,
+          event_type: "round",
+          message: "Round 1 clear. You are qualified for Round 2 Pair Battle setup.",
+        })),
+      );
     }
 
     if (eliminated.length > 0) {
@@ -64,6 +82,8 @@ export async function POST(request: NextRequest) {
           is_active: false,
           eliminated_at: nowIso,
           eliminated_round: 1,
+          round2_status: "eliminated",
+          pair_battle_enabled: false,
         })
         .in("id", eliminated.map((team) => team.id));
 
@@ -80,12 +100,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (round2?.id) {
+      await supabase
+        .from("pair_pairings")
+        .delete()
+        .eq("round_id", round2.id);
+
+      const setupRows = Array.from({ length: 6 }, () => ({
+        round_id: round2.id,
+        status: "waiting" as const,
+      }));
+
+      await supabase.from("pair_pairings").insert(setupRows);
+    }
+
     return NextResponse.json({
       success: true,
       roundNumber: 1,
       survivorLimit: ROUND1_SURVIVOR_LIMIT,
       survivors,
       eliminated,
+      round2SetupReady: Boolean(round2?.id),
+      round2Id: round2?.id ?? null,
+      autoFocusPairBattle: true,
     });
   }
 

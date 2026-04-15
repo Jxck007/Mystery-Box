@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { requireUser } from "@/lib/supabase-server";
+import { requireAdmin } from "@/app/api/admin/_auth";
 
 /**
  * POST /api/admin/pair-battle/setup
@@ -8,13 +8,8 @@ import { requireUser } from "@/lib/supabase-server";
  * Body: { roundId: string } - identifies which round this is for
  */
 export async function POST(request: NextRequest) {
-  const auth = await requireUser(request);
-  if (!auth.user) {
-    return NextResponse.json(
-      { error: auth.error ?? "Unauthorized" },
-      { status: 401 }
-    );
-  }
+  const auth = await requireAdmin(request);
+  if (auth) return auth;
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body.roundId !== "string") {

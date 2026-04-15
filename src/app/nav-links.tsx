@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { isTestModeEnabled } from "@/lib/test-mode";
+import { playSound } from "@/lib/sound-manager";
 
 type NavLinkButtonProps = {
   href: string;
