@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { requireAdmin } from "@/app/api/admin/_auth";
+import { requireUser } from "@/lib/supabase-server";
 
 /**
  * GET /api/admin/pair-battle/qualified-teams
@@ -8,8 +8,13 @@ import { requireAdmin } from "@/app/api/admin/_auth";
  * Ready to be assigned to pair battle pairings
  */
 export async function GET(request: NextRequest) {
-  const auth = await requireAdmin(request);
-  if (auth) return auth;
+  const auth = await requireUser(request);
+  if (!auth.user) {
+    return NextResponse.json(
+      { error: auth.error ?? "Unauthorized" },
+      { status: 401 }
+    );
+  }
 
   const supabase = createAdminClient();
 

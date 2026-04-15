@@ -96,14 +96,15 @@ export async function POST(request: NextRequest) {
 
   // Check if code is correct
   if (trimmed !== team.round2_code) {
-    // Count wrong attempts for this team in this pair only.
-    const { count } = await supabase
-      .from("pair_submissions")
+    // Handle wrong submission with lockout progression
+    let attemptsQuery = supabase
+      .from("team_events")
       .select("id", { count: "exact", head: true })
-      .eq("pair_id", pairingId)
       .eq("team_id", team.id)
-      .eq("is_correct", false);
+      .eq("event_type", "round")
+      .ilike("message", "PAIR_ATTEMPT:%");
 
+    const { count } = await attemptsQuery;
     const nextAttempt = (count ?? 0) + 1;
     const shouldLock = nextAttempt % ATTEMPTS_PER_LOCK_STAGE === 0;
     const lockStage = Math.floor(nextAttempt / ATTEMPTS_PER_LOCK_STAGE);
@@ -156,7 +157,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // CORRECT CODE: attempt to claim winner atomically.
+  // CORRECT CODE: Record correct submission
   const solvedAtIso = new Date().toISOString();
 
   // Record pair submission
@@ -171,63 +172,17 @@ export async function POST(request: NextRequest) {
   // Get opponent team ID
   const opponentTeamId = player.team_id === pairing.team_a_id ? pairing.team_b_id : pairing.team_a_id;
 
-  // Mark pairing as completed with winner, but only if still unresolved.
-  const { data: claimedPairing, error: completePairingError } = await supabase
+  // Mark pairing as completed with winner
+  const { error: completePairingError } = await supabase
     .from("pair_pairings")
     .update({
       status: "completed",
       winner_id: player.team_id,
     })
-    .eq("id", pairingId)
-    .eq("status", "in_progress")
-    .is("winner_id", null)
-    .select("id, winner_id")
-    .maybeSingle();
+    .eq("id", pairingId);
 
   if (completePairingError) {
     return NextResponse.json({ error: completePairingError.message }, { status: 500 });
-  }
-
-  if (!claimedPairing) {
-    const { data: latestPairing } = await supabase
-      .from("pair_pairings")
-      .select("winner_id")
-      .eq("id", pairingId)
-      .maybeSingle();
-
-    const existingWinnerId = latestPairing?.winner_id ?? null;
-    const lostRace = existingWinnerId && existingWinnerId !== player.team_id;
-
-    if (lostRace) {
-      await supabase
-        .from("teams")
-        .update({
-          round2_status: "eliminated",
-          round2_solved_at: solvedAtIso,
-          is_active: false,
-          eliminated_at: solvedAtIso,
-          eliminated_round: 2,
-          eliminated_position: 999,
-        })
-        .eq("id", player.team_id);
-
-      await supabase.from("team_events").insert({
-        team_id: player.team_id,
-        event_type: "pair_battle_loss",
-        message: "Your archenemy cracked before you.",
-      });
-    }
-
-    return NextResponse.json({
-      success: true,
-      result: "lost_race",
-      qualified: !lostRace,
-      winnerId: existingWinnerId,
-      loserId: lostRace ? player.team_id : opponentTeamId,
-      message: lostRace
-        ? "Your archenemy cracked before you."
-        : "This pair was already resolved.",
-    });
   }
 
   // Mark winner team

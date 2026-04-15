@@ -2,7 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/app/api/admin/_auth";
 
-const DEMO_TEAM_TARGET = 20;
+const DEMO_TEAM_TARGET = 16;
+
+const DEMO_TEAM_NAMES = [
+  "Team Alpha",
+  "Team Bravo",
+  "Team Cobra",
+  "Team Delta",
+  "Team Echo",
+  "Team Falcon",
+  "Team Ghost",
+  "Team Helix",
+  "Team Ion",
+  "Team Javelin",
+  "Team Kilo",
+  "Team Lancer",
+  "Team Meteor",
+  "Team Nova",
+  "Team Orbit",
+  "Team Phantom",
+];
 
 function makeCode() {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
@@ -30,11 +49,10 @@ export async function POST(request: NextRequest) {
   }
 
   const needed = DEMO_TEAM_TARGET - existing;
-  const stamp = Date.now().toString().slice(-5);
   const rows = Array.from({ length: needed }, (_, i) => {
     const index = i + 1;
     return {
-      name: `DEMO-${stamp}-${String(index).padStart(2, "0")}`,
+      name: DEMO_TEAM_NAMES[(existing + i) % DEMO_TEAM_NAMES.length],
       code: makeCode(),
       leader_name: `DEMO_LEAD_${String(index).padStart(2, "0")}`,
       score: Math.max(0, 120 - index),

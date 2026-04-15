@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { requireAdmin } from "@/app/api/admin/_auth";
+import { requireUser } from "@/lib/supabase-server";
 
 /**
  * POST /api/admin/pair-battle/reset
@@ -8,8 +8,13 @@ import { requireAdmin } from "@/app/api/admin/_auth";
  * Body: { roundId: string }
  */
 export async function POST(request: NextRequest) {
-  const auth = await requireAdmin(request);
-  if (auth) return auth;
+  const auth = await requireUser(request);
+  if (!auth.user) {
+    return NextResponse.json(
+      { error: auth.error ?? "Unauthorized" },
+      { status: 401 }
+    );
+  }
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body.roundId !== "string") {
@@ -20,61 +25,6 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createAdminClient();
-
-  const pairingId = typeof body.pairingId === "string" ? body.pairingId : null;
-
-  if (pairingId) {
-    const { data: pairing, error: pairingError } = await supabase
-      .from("pair_pairings")
-      .select("id, team_a_id, team_b_id")
-      .eq("id", pairingId)
-      .eq("round_id", body.roundId)
-      .maybeSingle();
-
-    if (pairingError || !pairing) {
-      return NextResponse.json({ error: "Pairing not found" }, { status: 404 });
-    }
-
-    const teamIds = [pairing.team_a_id, pairing.team_b_id].filter(Boolean) as string[];
-
-    if (teamIds.length > 0) {
-      await supabase
-        .from("teams")
-        .update({
-          pair_battle_enabled: true,
-          round2_code: null,
-          round2_lock_until: null,
-          round2_solved_at: null,
-          round2_status: "pending",
-          eliminated_at: null,
-          eliminated_round: null,
-          eliminated_position: null,
-          is_active: true,
-        })
-        .in("id", teamIds);
-    }
-
-    await supabase
-      .from("pair_submissions")
-      .delete()
-      .eq("pair_id", pairingId);
-
-    await supabase
-      .from("pair_pairings")
-      .update({
-        team_a_id: null,
-        team_b_id: null,
-        status: "waiting",
-        winner_id: null,
-        started_at: null,
-      })
-      .eq("id", pairingId);
-
-    return NextResponse.json({
-      success: true,
-      message: "Pair reset. Teams returned to pending state.",
-    });
-  }
 
   // Get all pairings for this round to find teams
   const { data: pairings } = await supabase
@@ -92,11 +42,7 @@ export async function POST(request: NextRequest) {
 
     await supabase
       .from("teams")
-      .update({
-        pair_battle_enabled: false,
-        round2_code: null,
-        round2_lock_until: null,
-      })
+      .update({ pair_battle_enabled: false })
       .in("id", allTeamIds);
   }
 

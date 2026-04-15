@@ -21,6 +21,12 @@ type PairRow = {
   winner_id?: string | null;
   team_a_id?: string | null;
   team_b_id?: string | null;
+  team_a_color?: string | null;
+  team_b_color?: string | null;
+  team_a_code?: string | null;
+  team_b_code?: string | null;
+  team_a_latest_attempt?: string | null;
+  team_b_latest_attempt?: string | null;
   team_a_attempts?: number;
   team_b_attempts?: number;
   is_live?: boolean;
@@ -62,10 +68,11 @@ export default function LeaderboardPage() {
     let cancelled = false;
 
     const run = async () => {
-      const pendingResultSound = sessionStorage.getItem("post_round2_result_sound");
-      if (pendingResultSound === "win_r2" || pendingResultSound === "lose_r2") {
-        void playSound(pendingResultSound);
-        sessionStorage.removeItem("post_round2_result_sound");
+      const round2Result = sessionStorage.getItem("round2_result");
+      const leaderboardSoundPlayed = sessionStorage.getItem("leaderboard_sound_played");
+      if ((round2Result === "win_r2" || round2Result === "lose_r2") && leaderboardSoundPlayed !== "1") {
+        void playSound(round2Result);
+        window.sessionStorage.setItem("leaderboard_sound_played", "1");
         return;
       }
 
@@ -311,7 +318,10 @@ export default function LeaderboardPage() {
                   <div className="battle-matchup">
                     <div className={`battle-team ${aWon ? "battle-winner" : bWon ? "battle-loser" : ""}`}>
                       <div className="battle-team-name">{pair.team_a?.name ?? "Awaiting Team"}</div>
+                      <div className="battle-team-meta">{pair.team_a_color ?? "Color pending"}</div>
                       <div className="battle-team-meta">Attempts: {pair.team_a_attempts ?? 0}</div>
+                      <div className="battle-team-meta">Latest: {pair.team_a_latest_attempt ?? "--"}</div>
+                      <div className="battle-team-meta">Code: {pair.team_a_code ?? "----"}</div>
                       {aWon && <div className="battle-badge">WON</div>}
                       {bWon && <div className="battle-badge lose">ELIMINATED</div>}
                     </div>
@@ -320,7 +330,10 @@ export default function LeaderboardPage() {
 
                     <div className={`battle-team ${bWon ? "battle-winner" : aWon ? "battle-loser" : ""}`}>
                       <div className="battle-team-name">{pair.team_b?.name ?? "Awaiting Team"}</div>
+                      <div className="battle-team-meta">{pair.team_b_color ?? "Color pending"}</div>
                       <div className="battle-team-meta">Attempts: {pair.team_b_attempts ?? 0}</div>
+                      <div className="battle-team-meta">Latest: {pair.team_b_latest_attempt ?? "--"}</div>
+                      <div className="battle-team-meta">Code: {pair.team_b_code ?? "----"}</div>
                       {bWon && <div className="battle-badge">WON</div>}
                       {aWon && <div className="battle-badge lose">ELIMINATED</div>}
                     </div>
