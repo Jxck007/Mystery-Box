@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { requireUser } from "@/lib/supabase-server";
+import { ROUND2_QUALIFIED_TEAM_LIMIT } from "@/lib/pair-battle";
 
 /**
  * GET /api/admin/pair-battle/qualified-teams
- * Returns the 12 teams qualified for Round 1 (top by score)
+ * Returns the 16 teams qualified for Round 2 (top by score)
  * Ready to be assigned to pair battle pairings
  */
 export async function GET(request: NextRequest) {
@@ -18,13 +19,13 @@ export async function GET(request: NextRequest) {
 
   const supabase = createAdminClient();
 
-  // Get top 12 teams by score (Round 1 survivors)
+  // Get top teams by score (Round 1 survivors)
   const { data: teams, error } = await supabase
     .from("teams")
     .select("id, name, leader_name, score, is_active")
     .eq("is_active", true)
     .order("score", { ascending: false })
-    .limit(12);
+    .limit(ROUND2_QUALIFIED_TEAM_LIMIT);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

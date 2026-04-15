@@ -11,7 +11,6 @@ import { MysteryBox } from "./components/mystery-box";
 import { default as GamePage } from "../game/[boxId]/page";
 
 import { UnlockVideoOverlay } from "./components/unlock-video-overlay";
-import { RewardReveal } from "./components/reward-reveal";
 
 type GameRecord = {
   id: string;
@@ -681,28 +680,92 @@ export default function TeamDashboardPage() {
               Waiting for admin to start the round.
             </p>
           )}
-            
-            <div className="mystery-box-scene">
- {unlockFlow === "playingGame" ? (
-   <motion.div
-     className="relative mx-auto w-full flex-col overflow-hidden bg-[linear-gradient(180deg,#09253c_0%,#0d3854_40%,#071b2b_100%)]"
-     style={{
-       maxWidth: "640px",
-       minHeight: "360px",
-       height: "auto",
-       borderRadius: "24px",
-       boxShadow: "0 0 80px rgba(50,210,255,0.4)",
-     }}
-     initial={{ opacity: 0, scale: 0.95 }}
-     animate={{ opacity: 1, scale: 1 }}
-     transition={{ duration: 0.5, ease: "easeOut" }}
-   >
-     <div className="p-4 sm:p-6 custom-scrollbar max-h-[80vh] overflow-y-auto">
-       <GamePage embedded boxId={revealedGame?.id} onGameComplete={() => { setUnlockFlow("unlocked"); setRevealedGame(null); setRevealedOpenRecord(null); }} />
-     </div>
-   </motion.div>
-  ) : (
- <MysteryBox
+          <div className="mystery-box-scene">
+            {unlockFlow === "playingGame" ? (
+              <motion.div
+                className="relative mx-auto w-full flex-col overflow-hidden bg-[linear-gradient(180deg,#09253c_0%,#0d3854_40%,#071b2b_100%)]"
+                style={{
+                  maxWidth: "640px",
+                  minHeight: "360px",
+                  height: "auto",
+                  borderRadius: "24px",
+                  boxShadow: "0 0 80px rgba(50,210,255,0.4)",
+                }}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+              >
+                <div className="p-4 sm:p-6 custom-scrollbar max-h-[80vh] overflow-y-auto">
+                  <GamePage
+                    embedded
+                    boxId={revealedGame?.id}
+                    onGameComplete={() => {
+                      setUnlockFlow("unlocked");
+                      setRevealedGame(null);
+                      setRevealedOpenRecord(null);
+                    }}
+                  />
+                </div>
+              </motion.div>
+            ) : showUnlockVideo || unlockFlow === "playingVideo" ? (
+              <div className="mx-auto w-full max-w-3xl space-y-4">
+                <UnlockVideoOverlay
+                  inline
+                  open={showUnlockVideo}
+                  videoSrc={UNLOCK_VIDEO_SRC}
+                  ruleBook={UNLOCK_RULES}
+                  gameTitle={revealedGame?.game_title ?? "MYSTERY CHALLENGE"}
+                  onEnded={() => {
+                    setShowUnlockVideo(false);
+                    setUnlockFlow("revealReward");
+                  }}
+                />
+              </div>
+            ) : unlockFlow === "revealReward" && revealedGame ? (
+              <motion.div
+                className="mx-auto w-full max-w-3xl rounded-3xl border border-cyan-400/35 bg-slate-950/80 p-5 shadow-[0_0_40px_rgba(31,185,255,0.25)] backdrop-blur-sm sm:p-8"
+                initial={{ opacity: 0, scale: 0.55, y: 24 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ duration: 0.45, ease: "easeOut" }}
+              >
+                <p className="label text-cyan-200">START GAME PORTAL</p>
+                <h3 className="mt-2 font-headline text-3xl font-black uppercase text-white sm:text-4xl">
+                  {revealedGame.game_title ?? "Mystery Challenge"}
+                </h3>
+                {revealedGame.game_description ? (
+                  <p className="mt-3 text-sm text-slate-200 sm:text-base">{revealedGame.game_description}</p>
+                ) : null}
+                <ul className="mt-4 space-y-2 text-sm text-slate-300">
+                  {UNLOCK_RULES.map((rule, index) => (
+                    <li key={rule}>
+                      <span className="mr-2 font-mono text-cyan-300">{index + 1}.</span>
+                      {rule}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-6 space-y-3">
+                  <button
+                    type="button"
+                    className="button-primary w-full rounded-md py-3 text-sm font-bold tracking-[0.14em]"
+                    onClick={handleStartMission}
+                    disabled={briefingBusy || !revealedOpenRecord}
+                  >
+                    {briefingBusy ? "INITIALIZING..." : "START MISSION"}
+                  </button>
+                  <button
+                    type="button"
+                    className="button-secondary w-full rounded-md py-2 text-xs"
+                    onClick={() => {
+                      setDismissedRevealOpenId(revealedOpenRecord?.id ?? null);
+                      setUnlockFlow("unlocked");
+                    }}
+                  >
+                    BACK TO DASHBOARD
+                  </button>
+                </div>
+              </motion.div>
+            ) : (
+              <MysteryBox
                 disabled={unlockFlow !== "unlocked"}
                 isClicked={unlockFlow !== "unlocked"}
                 videoPreviewSrc={UNLOCK_VIDEO_SRC}
@@ -710,7 +773,7 @@ export default function TeamDashboardPage() {
                 gameTitle={revealedGame?.game_title || "MYSTERY CHALLENGE"}
                 onEnded={() => {
                   setShowUnlockVideo(false);
-                  void handleStartMission();
+                  setUnlockFlow("revealReward");
                 }}
                 onOpen={() => {
                   void handleBoxClick();

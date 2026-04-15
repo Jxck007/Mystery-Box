@@ -1,6 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  BATTLE_COLOR_PALETTE,
+  getBattleColor,
+  ROUND2_PAIR_COUNT,
+  ROUND2_QUALIFIED_TEAM_LIMIT,
+} from "@/lib/pair-battle";
 
 interface QualifiedTeam {
   id: string;
@@ -35,6 +41,12 @@ interface PairPairing {
   correct_at?: string | null;
   elapsed_seconds?: number;
   solved_elapsed_seconds?: number | null;
+  team_a_color?: string | null;
+  team_b_color?: string | null;
+  team_a_code?: string | null;
+  team_b_code?: string | null;
+  team_a_latest_attempt?: string | null;
+  team_b_latest_attempt?: string | null;
 }
 
 type DragPayload = {
@@ -73,6 +85,11 @@ export function PairBattleBoard({
   const [setupDone, setSetupDone] = useState(false);
   const [pairingStarted, setPairingStarted] = useState(false);
   const [pairCodeInputs, setPairCodeInputs] = useState<Record<string, string>>({});
+  const [pairColorDraft, setPairColorDraft] = useState<Record<string, { a: string; b: string }>>({});
+  const [masterColorCodes, setMasterColorCodes] = useState<Record<string, string>>(() =>
+    Object.fromEntries(BATTLE_COLOR_PALETTE.map((entry) => [entry.name, ""])),
+  );
+  const [allowColorRepeat, setAllowColorRepeat] = useState(false);
   const [codeBusy, setCodeBusy] = useState<Record<string, boolean>>({});
   const [liveBusy, setLiveBusy] = useState<Record<string, boolean>>({});
 
@@ -96,9 +113,31 @@ export function PairBattleBoard({
     setPairings(nextPairings);
     setDraftPairings(nextPairings);
     setHasDraftChanges(false);
+    setPairColorDraft(() => {
+      const next: Record<string, { a: string; b: string }> = {};
+      nextPairings.forEach((pairing) => {
+        next[pairing.id] = {
+          a: pairing.team_a_color ?? "",
+          b: pairing.team_b_color ?? "",
+        };
+      });
+      return next;
+    });
+    setPairCodeInputs((prev) => {
+      const next = { ...prev };
+      nextPairings.forEach((pairing) => {
+        if (pairing.team_a_color && pairing.team_a_code && !masterColorCodes[pairing.team_a_color]) {
+          setMasterColorCodes((current) => ({ ...current, [pairing.team_a_color!]: pairing.team_a_code! }));
+        }
+        if (pairing.team_b_color && pairing.team_b_code && !masterColorCodes[pairing.team_b_color]) {
+          setMasterColorCodes((current) => ({ ...current, [pairing.team_b_color!]: pairing.team_b_code! }));
+        }
+      });
+      return next;
+    });
     setSetupDone(nextPairings.length > 0);
     setPairingStarted(nextPairings.some((pairing) => pairing.status === "in_progress"));
-  }, [getAdminHeaders, roundId]);
+  }, [getAdminHeaders, masterColorCodes, roundId]);
 
   const setupPairings = useCallback(async () => {
     const headers = await getAdminHeaders();
@@ -196,7 +235,7 @@ export function PairBattleBoard({
 
     if (changed.length === 0) {
       setHasDraftChanges(false);
-      onStatusChange?.(`Pairings confirmed. ${fullPairs}/6 battle rows are ready.`);
+      onStatusChange?.(`Pairings confirmed. ${fullPairs}/${ROUND2_PAIR_COUNT} battle rows are ready.`);
       return;
     }
 
@@ -221,8 +260,95 @@ export function PairBattleBoard({
 
     await fetchPairingStatus();
     setLoading(false);
-    onStatusChange?.(`Pairings saved. ${fullPairs}/6 battle rows are ready.`);
+    onStatusChange?.(`Pairings saved. ${fullPairs}/${ROUND2_PAIR_COUNT} battle rows are ready.`);
   }, [assignTeam, draftPairings, fetchPairingStatus, hasDraftChanges, onStatusChange, pairings]);
+
+  const saveMasterColorCodes = useCallback(async () => {
+    const headers = await getAdminHeaders();
+    if (!headers) return;
+    const entries = Object.entries(masterColorCodes)
+      .map(([color, code]) => ({ color, code: code.trim() }))
+      .filter((entry) => /^\d{4}$/.test(entry.code));
+
+    if (entries.length === 0) {
+      onStatusChange?.("Enter at least one valid 4-digit master color code.");
+      return;
+    }
+
+    setLoading(true);
+    const response = await fetch("/api/admin/pair-battle/code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({ mode: "save_color_codes", entries }),
+    });
+    const data = await response.json().catch(() => ({}));
+    setLoading(false);
+    if (!response.ok) {
+      onStatusChange?.(data.error ?? "Unable to save color master codes");
+      return;
+    }
+    onStatusChange?.("Master color code panel saved.");
+  }, [getAdminHeaders, masterColorCodes, onStatusChange]);
+
+  const savePairColors = useCallback(async (pairingId: string) => {
+    const headers = await getAdminHeaders();
+    if (!headers) return;
+    const draft = pairColorDraft[pairingId];
+    if (!draft || !draft.a || !draft.b) {
+      onStatusChange?.("Select both team colors before saving.");
+      return;
+    }
+
+    setCodeBusy((prev) => ({ ...prev, [pairingId]: true }));
+    const response = await fetch("/api/admin/pair-battle/code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({
+        mode: "assign_pair_colors",
+        pairingId,
+        teamAColor: draft.a,
+        teamBColor: draft.b,
+        allowRepeat: allowColorRepeat,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    setCodeBusy((prev) => ({ ...prev, [pairingId]: false }));
+    if (!response.ok) {
+      onStatusChange?.(data.error ?? "Unable to assign colors");
+      return;
+    }
+    onStatusChange?.("Pair colors assigned and synced to team codes.");
+    await fetchPairingStatus();
+  }, [allowColorRepeat, fetchPairingStatus, getAdminHeaders, onStatusChange, pairColorDraft]);
+
+  const autoAssignColors = useCallback(() => {
+    const next: Record<string, { a: string; b: string }> = {};
+    draftPairings.forEach((pairing, index) => {
+      const colorA = BATTLE_COLOR_PALETTE[(index * 2) % BATTLE_COLOR_PALETTE.length]?.name ?? "";
+      const colorB = BATTLE_COLOR_PALETTE[(index * 2 + 1) % BATTLE_COLOR_PALETTE.length]?.name ?? "";
+      next[pairing.id] = { a: colorA, b: colorB };
+    });
+    setPairColorDraft(next);
+    onStatusChange?.("Color notes auto-assigned. Review and save each pair.");
+  }, [draftPairings, onStatusChange]);
+
+  const seedDemoTeams = useCallback(async () => {
+    const headers = await getAdminHeaders();
+    if (!headers) return;
+    setLoading(true);
+    const response = await fetch("/api/admin/pair-battle/demo-seed", {
+      method: "POST",
+      headers,
+    });
+    const data = await response.json().catch(() => ({}));
+    setLoading(false);
+    if (!response.ok) {
+      onStatusChange?.(data.error ?? "Unable to seed demo teams");
+      return;
+    }
+    onStatusChange?.(data.message ?? "Demo teams seeded.");
+    await fetchQualifiedTeams();
+  }, [fetchQualifiedTeams, getAdminHeaders, onStatusChange]);
 
   const setPairCode = useCallback(async (pairingId: string) => {
     const headers = await getAdminHeaders();
@@ -389,7 +515,7 @@ export function PairBattleBoard({
       return;
     }
     const next = orderedPairs.map((pairing) => ({ ...pairing }));
-    for (let i = 0; i < Math.min(6, orderedPairs.length); i += 1) {
+    for (let i = 0; i < Math.min(ROUND2_PAIR_COUNT, orderedPairs.length); i += 1) {
       const pair = next[i];
       const teamA = orderedTeams[i * 2];
       const teamB = orderedTeams[i * 2 + 1];
@@ -440,7 +566,7 @@ export function PairBattleBoard({
         <div className="pair-setup-card">
           <p className="subtitle">Round 2 Pair Battle is locked and ready.</p>
           <p className="description">
-            Top 12 survivors enter six head-to-head duels. Assign pairs, set one secret code per pair, and launch battle.
+            Top {ROUND2_QUALIFIED_TEAM_LIMIT} survivors enter {ROUND2_PAIR_COUNT} head-to-head duels. Assign pairs, set color notes, and launch battle.
           </p>
           <button className="button-action" onClick={setupPairings} disabled={loading}>
             {loading ? "Setting up..." : "Unlock Pair Setup"}
@@ -450,9 +576,9 @@ export function PairBattleBoard({
         <div className="pair-battle-content">
           <div className="pair-controls">
             <div className="pair-info">
-              <span className="info-item">Qualified: {qualifiedTeams.length}/12</span>
-              <span className="info-item">Assigned: {qualifiedTeams.length - unassignedTeams.length}/12</span>
-              <span className="info-item">Completed: {completedPairs}/6</span>
+              <span className="info-item">Qualified: {qualifiedTeams.length}/{ROUND2_QUALIFIED_TEAM_LIMIT}</span>
+              <span className="info-item">Assigned: {qualifiedTeams.length - unassignedTeams.length}/{ROUND2_QUALIFIED_TEAM_LIMIT}</span>
+              <span className="info-item">Completed: {completedPairs}/{ROUND2_PAIR_COUNT}</span>
               {hasDraftChanges && <span className="info-item">Draft changes not saved</span>}
               <span className="info-item status-badge" data-status={pairingStarted ? "active" : "ready"}>
                 {pairingStarted ? "LIVE BATTLE" : "SETUP MODE"}
@@ -460,9 +586,12 @@ export function PairBattleBoard({
             </div>
             <div className="pair-actions">
               <button className="button-neutral" onClick={autoPair} disabled={loading}>Auto Pair</button>
+              <button className="button-neutral" onClick={autoAssignColors} disabled={loading}>Auto Assign Colors</button>
+              <button className="button-neutral" onClick={seedDemoTeams} disabled={loading}>Seed Demo Teams</button>
               <button className="button-neutral" onClick={savePairings} disabled={loading}>Save Pairings</button>
-              <button className="button-neutral" onClick={autoGenerateCodes} disabled={loading}>Random Generate All</button>
-              <button className="button-neutral" onClick={saveAllCodes} disabled={loading}>Save Codes</button>
+              <button className="button-neutral" onClick={autoGenerateCodes} disabled={loading}>Random Generate Codes</button>
+              <button className="button-neutral" onClick={saveMasterColorCodes} disabled={loading}>Save Master Codes</button>
+              <button className="button-neutral" onClick={saveAllCodes} disabled={loading}>Save Legacy Pair Codes</button>
               {!pairingStarted && (
                 <button className="button-action" onClick={startPairingBattle} disabled={loading || unassignedTeams.length > 0}>
                   {loading ? "Starting..." : "START ROUND 2"}
@@ -562,29 +691,52 @@ export function PairBattleBoard({
 
                     {pairing.team_a_id && pairing.team_b_id && (
                       <div className="pair-code-controls">
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          maxLength={4}
+                        <select
                           className="input-field"
-                          placeholder="0000"
-                          value={pairCodeInputs[pairing.id] ?? ""}
+                          value={pairColorDraft[pairing.id]?.a ?? ""}
                           onChange={(event) => {
-                            const digits = event.target.value.replace(/\D/g, "").slice(0, 4);
-                            setPairCodeInputs((prev) => ({ ...prev, [pairing.id]: digits }));
+                            const value = event.target.value;
+                            setPairColorDraft((prev) => ({
+                              ...prev,
+                              [pairing.id]: { a: value, b: prev[pairing.id]?.b ?? "" },
+                            }));
                           }}
-                        />
+                        >
+                          <option value="">Team A Color</option>
+                          {BATTLE_COLOR_PALETTE.map((entry) => (
+                            <option key={entry.name} value={entry.name}>{entry.name}</option>
+                          ))}
+                        </select>
+                        <select
+                          className="input-field"
+                          value={pairColorDraft[pairing.id]?.b ?? ""}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setPairColorDraft((prev) => ({
+                              ...prev,
+                              [pairing.id]: { a: prev[pairing.id]?.a ?? "", b: value },
+                            }));
+                          }}
+                        >
+                          <option value="">Team B Color</option>
+                          {BATTLE_COLOR_PALETTE.map((entry) => (
+                            <option key={entry.name} value={entry.name}>{entry.name}</option>
+                          ))}
+                        </select>
                         <button
                           className="button-primary"
-                          onClick={() => void setPairCode(pairing.id)}
-                          disabled={hasDraftChanges || (pairCodeInputs[pairing.id] ?? "").length !== 4 || codeBusy[pairing.id]}
+                          onClick={() => void savePairColors(pairing.id)}
+                          disabled={hasDraftChanges || codeBusy[pairing.id]}
                         >
-                          {codeBusy[pairing.id] ? "Saving..." : "Change Code"}
+                          {codeBusy[pairing.id] ? "Saving..." : "Save Colors"}
                         </button>
                       </div>
                     )}
 
                     <div className="pair-meta">
+                      <span>Colors: {pairing.team_a_color ?? "--"} vs {pairing.team_b_color ?? "--"}</span>
+                      <span>Codes: {pairing.team_a_code ?? "----"} / {pairing.team_b_code ?? "----"}</span>
+                      <span>Latest: {pairing.team_a_latest_attempt ?? "----"} / {pairing.team_b_latest_attempt ?? "----"}</span>
                       <span>Status: {pairing.status}</span>
                       <span>Time: {formatElapsed(pairing.elapsed_seconds)}</span>
                       <span>Correct Time: {formatElapsed(pairing.solved_elapsed_seconds)}</span>
@@ -611,10 +763,47 @@ export function PairBattleBoard({
             <p className="text-sm text-slate-300">
               Monitor submissions in real time. Pair outcomes auto-resolve on first correct solve.
             </p>
+            <label className="text-xs text-slate-300 flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={allowColorRepeat}
+                onChange={(event) => setAllowColorRepeat(event.target.checked)}
+              />
+              Repeat mode (allow duplicate colors in same pair)
+            </label>
             <button className="button-danger" onClick={() => void endRoundManually()} disabled={loading}>
               {loading ? "Syncing..." : "End Round Manually"}
             </button>
           </div>
+
+          <section className="pair-admin-live">
+            <div>
+              <p className="label">COLOR MASTER CODE PANEL</p>
+              <p className="text-sm text-slate-300">Set hidden 4-digit code per official color.</p>
+            </div>
+            <div className="pairs-grid" style={{ width: "100%" }}>
+              {BATTLE_COLOR_PALETTE.map((entry) => {
+                const badge = getBattleColor(entry.name);
+                return (
+                  <div key={entry.name} className="pair-container">
+                    <p className="text-xs font-semibold" style={{ color: badge?.hex ?? "#fff" }}>{entry.name}</p>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={4}
+                      className="input-field"
+                      placeholder="0000"
+                      value={masterColorCodes[entry.name] ?? ""}
+                      onChange={(event) => {
+                        const digits = event.target.value.replace(/\D/g, "").slice(0, 4);
+                        setMasterColorCodes((prev) => ({ ...prev, [entry.name]: digits }));
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         </div>
       )}
 

@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { requireUser } from "@/lib/supabase-server";
+import { requireAdmin } from "@/app/api/admin/_auth";
+import { ROUND2_PAIR_COUNT } from "@/lib/pair-battle";
 
 /**
  * POST /api/admin/pair-battle/setup
- * Creates 6 empty pair pairings for the pair battle mode
+ * Creates 8 empty pair pairings for the pair battle mode
  * Body: { roundId: string } - identifies which round this is for
  */
 export async function POST(request: NextRequest) {
-  const auth = await requireUser(request);
-  if (!auth.user) {
-    return NextResponse.json(
-      { error: auth.error ?? "Unauthorized" },
-      { status: 401 }
-    );
-  }
+  const auth = await requireAdmin(request);
+  if (auth) return auth;
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body.roundId !== "string") {
@@ -26,10 +22,10 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
 
-  // Keep existing assignments and only add missing skeleton rows up to 6.
+  // Keep existing assignments and only add missing skeleton rows up to ROUND2_PAIR_COUNT.
   const { data: existing, error: existingError } = await supabase
     .from("pair_pairings")
-    .select("id")
+    .select("id, pair_number")
     .eq("round_id", body.roundId);
 
   if (existingError) {
@@ -37,11 +33,18 @@ export async function POST(request: NextRequest) {
   }
 
   const existingCount = existing?.length ?? 0;
-  const missingCount = Math.max(0, 6 - existingCount);
-  const missingRows = Array.from({ length: missingCount }, () => ({
-    round_id: body.roundId,
-    status: "waiting" as const,
-  }));
+  const missingCount = Math.max(0, ROUND2_PAIR_COUNT - existingCount);
+  const usedNumbers = new Set((existing ?? []).map((row) => row.pair_number).filter((value): value is number => typeof value === "number"));
+  const missingRows: Array<{ round_id: string; status: "waiting"; pair_number: number }> = [];
+  for (let pairNumber = 1; pairNumber <= ROUND2_PAIR_COUNT; pairNumber += 1) {
+    if (usedNumbers.has(pairNumber)) continue;
+    missingRows.push({
+      round_id: body.roundId,
+      status: "waiting",
+      pair_number: pairNumber,
+    });
+    if (missingRows.length >= missingCount) break;
+  }
 
   if (missingRows.length > 0) {
     const { error: insertError } = await supabase
@@ -57,8 +60,9 @@ export async function POST(request: NextRequest) {
     .from("pair_pairings")
     .select("*")
     .eq("round_id", body.roundId)
+    .order("pair_number", { ascending: true })
     .order("created_at", { ascending: true })
-    .limit(6);
+    .limit(ROUND2_PAIR_COUNT);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -67,6 +71,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     success: true,
     pairings: data,
-    message: "6 pair slots are ready. Existing assignments were kept.",
+    message: `${ROUND2_PAIR_COUNT} pair slots are ready. Existing assignments were kept.`,
   });
 }
