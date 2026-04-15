@@ -68,10 +68,11 @@ export default function LeaderboardPage() {
     let cancelled = false;
 
     const run = async () => {
-      const pendingResultSound = sessionStorage.getItem("post_round2_result_sound");
-      if (pendingResultSound === "win_r2" || pendingResultSound === "lose_r2") {
-        void playSound(pendingResultSound);
-        sessionStorage.removeItem("post_round2_result_sound");
+      const round2Result = sessionStorage.getItem("round2_result");
+      const leaderboardSoundPlayed = sessionStorage.getItem("leaderboard_sound_played");
+      if ((round2Result === "win_r2" || round2Result === "lose_r2") && leaderboardSoundPlayed !== "1") {
+        void playSound(round2Result);
+        window.sessionStorage.setItem("leaderboard_sound_played", "1");
         return;
       }
 
