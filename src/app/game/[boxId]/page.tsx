@@ -349,66 +349,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
   }, [timeLeft, teamId, game, correctCount, router, scoreInput]);
 
   useEffect(() => {
-    if (!teamId) return;
-    const penaltyUrl = `/api/teams/${teamId}/penalty`;
-    let hiddenAt: number | null = null;
-
-    const dispatchPenalty = (reason: string) => {
-      if (leavePenaltyRef.current) return;
-      leavePenaltyRef.current = true;
-      setLeaveWarning(true);
-      if (progressStorageKey) {
-        localStorage.removeItem(progressStorageKey);
-      }
-
-      const payload = JSON.stringify({ reason });
-      if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
-        try {
-          navigator.sendBeacon(penaltyUrl, new Blob([payload], { type: "application/json" }));
-        } catch {
-          // Ignore beacon transport failures and still attempt fetch.
-        }
-      }
-
-      void fetch(penaltyUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: payload,
-        keepalive: true,
-        cache: "no-store",
-      }).catch(() => null);
-    };
-
-    const handleVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        hiddenAt = Date.now();
-        return;
-      }
-      if (document.visibilityState === "visible" && hiddenAt) {
-        const hiddenDuration = Date.now() - hiddenAt;
-        hiddenAt = null;
-        // Ignore quick focus interruptions to prevent false redirects during play.
-        if (hiddenDuration >= 3000) {
-          dispatchPenalty("visibility_hidden");
-        }
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "PrintScreen") {
-        dispatchPenalty("printscreen");
-      }
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "s") {
-        dispatchPenalty("screenshot_shortcut");
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
+    // Monitoring disabled for unhindered production experience.
   }, [teamId, progressStorageKey]);
 
   if (error) {
