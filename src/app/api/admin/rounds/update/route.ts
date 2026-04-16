@@ -221,17 +221,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if ((round.round_number ?? 0) === 2) {
-      await supabase
-        .from("teams")
-        .update({
-          score: 0,
-          round2_solved_at: null,
-          round2_status: null,
-          round2_lock_until: null,
-        })
-        .eq("is_active", true);
-    }
+
 
     const { data: allTeams } = await supabase.from("teams").select("id").eq("is_active", true);
     if (allTeams && allTeams.length > 0) {
@@ -307,11 +297,7 @@ export async function POST(request: NextRequest) {
             eliminated_at: null,
             eliminated_round: null,
             eliminated_position: null,
-            round2_status: null,
-            round2_solved_at: null,
-            round2_lock_until: null,
-          })
-          .in("id", survivingTeams.map((team) => team.id));
+          }).in("id", survivingTeams.map((team) => team.id));
       }
 
       if (eliminatedTeams.length > 0) {
@@ -341,32 +327,6 @@ export async function POST(request: NextRequest) {
             message: `Round 1 elimination. You finished at position ${round1Cutoff + index + 1}.`,
           })),
         );
-      }
-
-      const { data: existingRound2, error: round2LookupError } = await supabase
-        .from("rounds")
-        .select("id")
-        .eq("round_number", 2)
-        .maybeSingle();
-
-      if (round2LookupError) {
-        return NextResponse.json({ error: round2LookupError.message }, { status: 500 });
-      }
-
-      if (!existingRound2) {
-        const { error: createRound2Error } = await supabase
-          .from("rounds")
-          .insert({
-            round_number: 2,
-            title: "Round 2",
-            status: "waiting",
-            duration_seconds: 180,
-            elapsed_seconds: 0,
-          });
-
-        if (createRound2Error) {
-          return NextResponse.json({ error: createRound2Error.message }, { status: 500 });
-        }
       }
     }
 

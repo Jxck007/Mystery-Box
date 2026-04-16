@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { playSound } from "@/lib/sound-manager";
-import { playSound } from "@/lib/sound-manager";
 
 function AuthContent() {
   const router = useRouter();

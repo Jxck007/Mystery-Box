@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { playSound, playSoundAndWait } from "@/lib/sound-manager";
-import { getBattleColor } from "@/lib/pair-battle";
 
 type LeaderboardEntry = {
   id: string;
