@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { isTestModeEnabled } from "@/lib/test-mode";
+import { getTestRoundNumber, isTestModeEnabled } from "@/lib/test-mode";
 import { playSound, playSoundAndWait } from "@/lib/sound-manager";
 import { getBattleColor } from "@/lib/pair-battle";
 
@@ -67,6 +67,8 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [checkedSession, setCheckedSession] = useState(false);
   const [round1Outcome, setRound1Outcome] = useState<"selected" | "eliminated" | null>(null);
+  const [myRank, setMyRank] = useState<number | null>(null);
+  const [qualificationResult, setQualificationResult] = useState<"win" | "lose" | null>(null);
   const testMode = isTestModeEnabled();
 
   useEffect(() => {
@@ -95,7 +97,10 @@ export default function LeaderboardPage() {
         return;
       }
 
-      playSound("leaderboard_open");
+      const cameFromDashboard = sessionStorage.getItem("dashboard_redirected") === "1";
+      if (!cameFromDashboard) {
+        playSound("leaderboard_open");
+      }
     };
 
     void run();
@@ -108,19 +113,43 @@ export default function LeaderboardPage() {
   const fetchLeaderboard = useCallback(async () => {
     setLoading(true);
     if (testMode) {
-      setEntries([
-        { id: "t1", name: "TEST COLLECTIVE", score: 2400, member_count: 3, max_members: 4 },
-        { id: "t2", name: "NODE_02", score: 2100, member_count: 4, max_members: 4 },
-        { id: "t3", name: "NODE_03", score: 1800, member_count: 3, max_members: 4 },
-        { id: "t4", name: "SKULL RAIDERS", score: 1700, member_count: 4, max_members: 4 },
-        { id: "t5", name: "BONE CIRCUIT", score: 1650, member_count: 4, max_members: 4 },
-        { id: "t6", name: "PHANTOM LOGIC", score: 1625, member_count: 4, max_members: 4 },
-      ]);
-      setRound2({ id: "test-round2", round_number: 2, status: "active" });
-      setActiveRoundNumber(2);
-      if (!autoTabInitialized) {
-        setSelectedRoundTab("round2");
-        setAutoTabInitialized(true);
+      const activeTestRound = getTestRoundNumber();
+      const generatedTeams: LeaderboardEntry[] = Array.from({ length: 49 }, (_, index) => {
+        const teamNumber = index + 1;
+        const seededVariance = (teamNumber * 73) % 41;
+        const score = Math.max(120, 3000 - teamNumber * 42 + seededVariance);
+        return {
+          id: `test-team-${teamNumber}`,
+          name: `TEST_TEAM_${String(teamNumber).padStart(2, "0")}`,
+          score,
+          member_count: (teamNumber % 4) + 1,
+          max_members: 4,
+        };
+      });
+      generatedTeams.push({
+        id: "test-team",
+        name: "TEST_OPERATOR_TEAM",
+        score: 2450,
+        member_count: 4,
+        max_members: 4,
+      });
+      generatedTeams.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+      setEntries(generatedTeams);
+
+      if (activeTestRound === 2) {
+        setRound2({ id: "test-round2", round_number: 2, status: "active" });
+        setActiveRoundNumber(2);
+        if (!autoTabInitialized) {
+          setSelectedRoundTab("round2");
+          setAutoTabInitialized(true);
+        }
+      } else {
+        setRound2(null);
+        setActiveRoundNumber(1);
+        if (!autoTabInitialized) {
+          setSelectedRoundTab("round1");
+          setAutoTabInitialized(true);
+        }
       }
       setPairings([
         {
@@ -259,6 +288,45 @@ export default function LeaderboardPage() {
     return () => window.clearInterval(intervalId);
   }, [fetchLeaderboard]);
 
+  useEffect(() => {
+    if (!checkedSession) return;
+    if (entries.length === 0) return;
+
+    const currentTeamId = testMode ? "test-team" : localStorage.getItem("team_id");
+    if (!currentTeamId) return;
+
+    const rankIndex = entries.findIndex((entry) => entry.id === currentTeamId);
+    if (rankIndex < 0) return;
+
+    const computedRank = rankIndex + 1;
+    const isQualified = computedRank <= 16;
+    const computedResult: "win" | "lose" = isQualified ? "win" : "lose";
+
+    setMyRank(computedRank);
+    setQualificationResult(computedResult);
+    sessionStorage.setItem("result", computedResult);
+
+    const soundAlreadyPlayed = sessionStorage.getItem("leaderboard_sound_played") === "1";
+    if (!soundAlreadyPlayed) {
+      playSound(isQualified ? "win_r1" : "lose_r1");
+      sessionStorage.setItem("leaderboard_sound_played", "1");
+    }
+  }, [checkedSession, entries, testMode]);
+
+  useEffect(() => {
+    if (qualificationResult !== "win") return;
+
+    const alreadyRedirected = sessionStorage.getItem("leaderboard_round2_redirected") === "1";
+    if (alreadyRedirected) return;
+
+    const redirectTimer = window.setTimeout(() => {
+      sessionStorage.setItem("leaderboard_round2_redirected", "1");
+      router.replace("/round2");
+    }, 7000);
+
+    return () => window.clearTimeout(redirectTimer);
+  }, [qualificationResult, router]);
+
   const round2LeaderboardUnlocked = useMemo(() => {
     if (!round2) return false;
     if (round2.status === "active") return true;
@@ -351,6 +419,18 @@ export default function LeaderboardPage() {
               CUT SESSION
             </button>
           </div>
+        </div>
+      )}
+
+      {myRank !== null && qualificationResult === "win" && (
+        <div className="banner paused">
+          Rank #{myRank}. Qualified for Round 2. Auto redirecting in a few seconds...
+        </div>
+      )}
+
+      {myRank !== null && qualificationResult === "lose" && (
+        <div className="banner ended">
+          Rank #{myRank}. Eliminated after Round 1. You can stay on this leaderboard.
         </div>
       )}
 
@@ -489,6 +569,21 @@ export default function LeaderboardPage() {
             <p className="text-sm text-slate-300 py-4">No teams yet. Invite others to start solving mystery boxes.</p>
           )}
         </div>
+
+        {entries.length > 0 && (
+          <div className="pt-2 border-t border-[rgba(103,170,255,0.2)]">
+            <p className="label text-[var(--accent)]">ROUND 2 QUALIFIED (TOP 16)</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {entries.slice(0, 16).map((team, idx) => (
+                <div key={`qual-${team.id}`} className="battle-team">
+                  <p className="label text-[var(--accent)]">#{idx + 1}</p>
+                  <p className="font-semibold text-sm text-white">{team.name}</p>
+                  <p className="text-xs text-slate-300">Score: {team.score ?? 0}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       )}
 

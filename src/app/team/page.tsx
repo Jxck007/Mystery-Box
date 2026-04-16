@@ -732,6 +732,36 @@ export default function TeamDashboardPage() {
   const showRound3Prompt = round?.status === "active" && round?.round_number === 3;
   const isEliminated = Boolean(team?.eliminated_at);
 
+  useEffect(() => {
+    if (testMode) return;
+    if (!team) return;
+    if (round?.round_number !== 1 || round.status !== "ended") return;
+
+    const alreadyRedirected = sessionStorage.getItem("round1_dashboard_redirected");
+    if (alreadyRedirected === "1") return;
+
+    sessionStorage.setItem("round1_score", String(team.score ?? 0));
+    sessionStorage.removeItem("dashboard_redirected");
+    sessionStorage.removeItem("leaderboard_sound_played");
+    sessionStorage.removeItem("leaderboard_round2_redirected");
+    sessionStorage.setItem("round1_dashboard_redirected", "1");
+    router.replace("/dashboard");
+  }, [round, router, team, testMode]);
+
+  useEffect(() => {
+    if (!testMode) return;
+
+    const cachedRound1Score = sessionStorage.getItem("round1_score");
+    const alreadyRedirected = sessionStorage.getItem("round1_dashboard_redirected");
+    if (!cachedRound1Score || alreadyRedirected === "1") return;
+
+    sessionStorage.removeItem("dashboard_redirected");
+    sessionStorage.removeItem("leaderboard_sound_played");
+    sessionStorage.removeItem("leaderboard_round2_redirected");
+    sessionStorage.setItem("round1_dashboard_redirected", "1");
+    router.replace("/dashboard");
+  }, [router, testMode]);
+
   return (
     <main
       className="page-shell space-y-6"
