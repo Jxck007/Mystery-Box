@@ -73,26 +73,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (effectiveStatus === "active" && effectiveStart) {
-    const startedAt = new Date(effectiveStart).getTime();
-    const elapsedSeconds = teamOverride
-      ? teamOverride.elapsed_seconds ?? 0
-      : roundRecord.elapsed_seconds ?? 0;
-    const durationSeconds = roundRecord.duration_seconds ?? 0;
-    const totalElapsed = elapsedSeconds + Math.floor((Date.now() - startedAt) / 1000);
-    const remaining = durationSeconds - totalElapsed;
-    if (durationSeconds > 0 && remaining <= 0) {
-      await supabase
-        .from("rounds")
-        .update({ status: "ended", ended_at: new Date().toISOString(), ended_by: "auto" })
-        .eq("id", roundRecord.id);
-      return NextResponse.json(
-        { error: "Round has ended" },
-        { status: 400 },
-      );
-    }
-  }
-
   const round = roundRecord as { id: string; round_number: number };
 
   if (round.round_number >= 2) {
