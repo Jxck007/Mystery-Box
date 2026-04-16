@@ -233,9 +233,9 @@ export default function LeaderboardPage() {
 
         {entries.length > 0 && (
           <div className="pt-2 border-t border-[rgba(103,170,255,0.2)]">
-            <p className="label text-[var(--accent)]">ROUND 2 QUALIFIED (TOP 16)</p>
+            <p className="label text-[var(--accent)]">ROUND 2 QUALIFIED (TOP 24)</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {entries.slice(0, 16).map((team, idx) => (
+              {entries.slice(0, 24).map((team, idx) => (
                 <div key={`qual-${team.id}`} className="battle-team">
                   <p className="label text-[var(--accent)]">#{idx + 1}</p>
                   <p className="font-semibold text-sm text-white">{team.name}</p>
