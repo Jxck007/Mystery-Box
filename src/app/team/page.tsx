@@ -592,12 +592,7 @@ export default function TeamDashboardPage() {
               <p className="label">MYSTERY_BOX</p>
               <h2 className="font-headline text-3xl font-black uppercase">OPEN THE BOX</h2>
             </div>
-            <div className="text-right">
-              <p className="label text-emerald-400">MISSION CLOCK</p>
-              <p className="font-headline text-3xl font-black text-emerald-400">
-                {formatTime(getLiveRemaining(round))}
-              </p>
-            </div>
+            
           </div>
 
           {unlockFlow === "locked" && (
@@ -605,6 +600,7 @@ export default function TeamDashboardPage() {
               Waiting for admin to start the round.
             </p>
           )}
+          {unlockFlow !== "locked" && (
             <div className="mystery-box-scene" style={{ overflow: "hidden" }}>
               <MysteryBox
                 disabled={unlockFlow !== "unlocked"}
@@ -642,6 +638,7 @@ export default function TeamDashboardPage() {
                 </AnimatePresence>
               </MysteryBox>
             </div>
+            )}
         </div>
             )}
           </motion.div>
