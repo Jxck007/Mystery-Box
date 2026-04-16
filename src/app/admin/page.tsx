@@ -354,9 +354,6 @@ export default function AdminDashboardPage() {
     return [...teams].sort((a, b) => {
       const scoreDiff = (b.score ?? 0) - (a.score ?? 0);
       if (scoreDiff !== 0) return scoreDiff;
-      const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : Number.MAX_SAFE_INTEGER;
-      const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : Number.MAX_SAFE_INTEGER;
-      if (aUpdated !== bUpdated) return aUpdated - bUpdated;
       const aCreated = a.created_at ? new Date(a.created_at).getTime() : Number.MAX_SAFE_INTEGER;
       const bCreated = b.created_at ? new Date(b.created_at).getTime() : Number.MAX_SAFE_INTEGER;
       if (aCreated !== bCreated) return aCreated - bCreated;
@@ -370,9 +367,6 @@ export default function AdminDashboardPage() {
       .sort((a, b) => {
         const scoreDiff = (b.score ?? 0) - (a.score ?? 0);
         if (scoreDiff !== 0) return scoreDiff;
-        const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : Number.MAX_SAFE_INTEGER;
-        const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : Number.MAX_SAFE_INTEGER;
-        if (aUpdated !== bUpdated) return aUpdated - bUpdated;
         const aCreated = a.created_at ? new Date(a.created_at).getTime() : Number.MAX_SAFE_INTEGER;
         const bCreated = b.created_at ? new Date(b.created_at).getTime() : Number.MAX_SAFE_INTEGER;
         if (aCreated !== bCreated) return aCreated - bCreated;

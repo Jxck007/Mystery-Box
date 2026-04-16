@@ -274,10 +274,9 @@ export async function POST(request: NextRequest) {
     if ((round.round_number ?? 0) === 1) {
       const { data: rankedTeams, error: rankedTeamsError } = await supabase
         .from("teams")
-        .select("id, score, updated_at, created_at")
+        .select("id, score, created_at")
         .eq("is_active", true)
         .order("score", { ascending: false })
-        .order("updated_at", { ascending: true })
         .order("created_at", { ascending: true });
 
       if (rankedTeamsError) {
