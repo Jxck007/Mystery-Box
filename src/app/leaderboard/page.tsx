@@ -48,6 +48,8 @@ type LeaderboardPayload = {
   pairings: PairRow[];
 };
 
+const ROUND2_PLACEHOLDER_URL = "https://your-round2-link-here.com";
+
 function getPairState(pair: PairRow) {
   if (pair.status === "completed") return "winner";
   if (pair.is_live) return "solving";
@@ -299,7 +301,7 @@ export default function LeaderboardPage() {
     if (rankIndex < 0) return;
 
     const computedRank = rankIndex + 1;
-    const isQualified = computedRank <= 16;
+    const isQualified = computedRank <= 24;
     const computedResult: "win" | "lose" = isQualified ? "win" : "lose";
 
     setMyRank(computedRank);
@@ -312,20 +314,6 @@ export default function LeaderboardPage() {
       sessionStorage.setItem("leaderboard_sound_played", "1");
     }
   }, [checkedSession, entries, testMode]);
-
-  useEffect(() => {
-    if (qualificationResult !== "win") return;
-
-    const alreadyRedirected = sessionStorage.getItem("leaderboard_round2_redirected") === "1";
-    if (alreadyRedirected) return;
-
-    const redirectTimer = window.setTimeout(() => {
-      sessionStorage.setItem("leaderboard_round2_redirected", "1");
-      router.replace("/round2");
-    }, 7000);
-
-    return () => window.clearTimeout(redirectTimer);
-  }, [qualificationResult, router]);
 
   const round2LeaderboardUnlocked = useMemo(() => {
     if (!round2) return false;
@@ -424,7 +412,17 @@ export default function LeaderboardPage() {
 
       {myRank !== null && qualificationResult === "win" && (
         <div className="banner paused">
-          Rank #{myRank}. Qualified for Round 2. Auto redirecting in a few seconds...
+          Rank #{myRank}. Qualified for Round 2 (Top 24).
+          <div className="mt-3">
+            <a
+              className="button-primary inline-flex items-center"
+              href={ROUND2_PLACEHOLDER_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              OPEN ROUND 2 LINK
+            </a>
+          </div>
         </div>
       )}
 
@@ -572,9 +570,9 @@ export default function LeaderboardPage() {
 
         {entries.length > 0 && (
           <div className="pt-2 border-t border-[rgba(103,170,255,0.2)]">
-            <p className="label text-[var(--accent)]">ROUND 2 QUALIFIED (TOP 16)</p>
+            <p className="label text-[var(--accent)]">ROUND 2 QUALIFIED (TOP 24)</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {entries.slice(0, 16).map((team, idx) => (
+              {entries.slice(0, 24).map((team, idx) => (
                 <div key={`qual-${team.id}`} className="battle-team">
                   <p className="label text-[var(--accent)]">#{idx + 1}</p>
                   <p className="font-semibold text-sm text-white">{team.name}</p>
