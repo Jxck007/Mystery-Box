@@ -42,7 +42,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: globalError.message }, { status: 500 });
   }
 
-  const roundData = teamOverride?.round ?? globalRound ?? null;
+  const roundRecord = teamOverride?.round;
+  const rawRoundData = Array.isArray(roundRecord) ? roundRecord[0] : roundRecord;
+  const roundData = rawRoundData ?? globalRound ?? null;
   let roundPayload = roundData
     ? {
         ...roundData,
@@ -116,7 +118,7 @@ export async function GET(request: Request) {
       .select("*")
       .eq("team_id", teamId)
       .eq("round_id", activeRoundId)
-      .order("created_at", { ascending: false })
+      .order("opened_at", { ascending: false, nullsFirst: true })
       .limit(1)
       .maybeSingle();
 

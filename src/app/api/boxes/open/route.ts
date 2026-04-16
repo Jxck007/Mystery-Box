@@ -53,7 +53,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: globalError.message }, { status: 500 });
   }
 
-  const roundRecord = teamOverride?.round ?? globalRound ?? null;
+  const globalRoundRecord = teamOverride?.round;
+  const rawRoundRecord = Array.isArray(globalRoundRecord) ? globalRoundRecord[0] : globalRoundRecord;
+  const roundRecord = rawRoundRecord ?? globalRound ?? null;
 
   if (!roundRecord) {
     return NextResponse.json(
@@ -106,7 +108,7 @@ export async function POST(request: NextRequest) {
     .eq("team_id", teamId)
     .eq("round_id", round.id)
     .eq("status", "pending")
-    .order("created_at", { ascending: false })
+    .order("opened_at", { ascending: false, nullsFirst: true })
     .limit(1)
     .maybeSingle();
 

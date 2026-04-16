@@ -232,7 +232,7 @@ export async function POST(request: NextRequest) {
         boxes_opened: 0,
         score_this_round: 0,
         status: "active",
-        started_at: new Date().toISOString(),
+        started_at: null,
         elapsed_seconds: 0,
       }));
 
