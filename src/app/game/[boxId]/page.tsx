@@ -26,6 +26,7 @@ type RoundRecord = {
 type BoxOpen = {
   id: string;
   status: "pending" | "approved" | "rejected";
+  opened_at?: string | null;
 };
 
 export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedded = false }: { boxId?: string; onGameComplete?: () => void; embedded?: boolean }) {
@@ -110,7 +111,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
   };
 
 
-  const totalSeconds = Math.min(round?.duration_seconds ?? GAME_CAP_SECONDS, GAME_CAP_SECONDS);
+  const totalSeconds = GAME_CAP_SECONDS;
   const safeTimeLeft = timeLeft ?? totalSeconds;
   const progressPercent = totalSeconds
     ? Math.max(0, Math.min(100, (safeTimeLeft / totalSeconds) * 100))
@@ -284,17 +285,15 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
   }, []);
 
   const getLiveRemaining = useCallback(() => {
-    const duration = round?.duration_seconds ?? GAME_CAP_SECONDS;
-    if (!round) return duration;
-    if (round.status === "ended") return 0;
-    if (round.status === "active") {
-      if (!round.started_at) return duration;
-      const startedAt = new Date(round.started_at).getTime();
-      const elapsedLive = Math.floor((nowTime - startedAt) / 1000);
+    const duration = GAME_CAP_SECONDS;
+    if (round?.status === "ended") return 0;
+    if (open?.opened_at) {
+      const openedAt = new Date(open.opened_at).getTime();
+      const elapsedLive = Math.floor((nowTime - openedAt) / 1000);
       return Math.max(0, duration - elapsedLive);
     }
     return duration;
-  }, [round, nowTime]);
+  }, [open, round, nowTime]);
 
   useEffect(() => {
     const remaining = getLiveRemaining();

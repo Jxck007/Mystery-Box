@@ -475,14 +475,6 @@ export default function AdminDashboardPage() {
     const activeRound = rounds.find((r) => r.status === "active");
     if (!activeRound) return;
     if ((activeRound.round_number ?? 0) !== 1) return;
-
-    const remaining = getLiveRemaining(activeRound);
-    if (remaining !== null && remaining <= 0 && activeRound.round_number === 1) {
-      const endKey = `auto-end-1`;
-      if (!actionBusy[endKey]) {
-        void handleRoundAction("end", 1, undefined, endKey);
-      }
-    }
   }, [authorized, rounds, getLiveRemaining, actionBusy, handleRoundAction]);
 
   if (!authorized) return null;
@@ -583,25 +575,6 @@ export default function AdminDashboardPage() {
                           : isEnded ? "COMPLETED"
                             : "PENDING"}
                     </div>
-                  </div>
-
-                  <div className="countdown-block" data-danger={isDanger}>
-                    <div className="countdown-ring">
-                      <svg viewBox="0 0 56 56">
-                        <circle className="ring-bg" cx="28" cy="28" r="24" />
-                        <circle className="ring-progress" cx="28" cy="28" r="24"
-                          strokeDasharray={circumference}
-                          strokeDashoffset={dashOffset}
-                        />
-                      </svg>
-                      <span className="countdown-time">{Math.round(pct * 100)}%</span>
-                    </div>
-                    <div className="flex flex-col items-center">
-                        <span className="countdown-label text-[var(--accent)] font-bold">Time Authorized</span>
-                        <span className="countdown-value text-white shadow-glow-sm">
-                          {formatTime(isActive ? remaining : (isEnded ? 0 : 180))}
-                        </span>
-                      </div>
                   </div>
 
                   <div className="admin-action-grid mt-6 gap-4">
