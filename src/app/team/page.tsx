@@ -303,13 +303,15 @@ export default function TeamDashboardPage() {
 
     playSound("start_r1");
 
-    fetch("/api/boxes/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamId: session.teamId }),
-    }).catch((err) => {
+    try {
+      await fetch("/api/boxes/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: session.teamId }),
+      });
+    } catch (err) {
       console.error("Box start error:", err);
-    });
+    }
 
     setBriefingBusy(false);
     setUnlockFlow("unlocked");

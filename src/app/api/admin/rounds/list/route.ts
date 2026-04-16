@@ -6,7 +6,9 @@ export async function GET(request: Request) {
   const auth = await requireAdmin(request);
   if (auth) return auth;
   const supabase = createAdminClient();
-  const GLOBAL_START_ROUNDS = new Set([3]);
+  const GLOBAL_START_ROUNDS = new Set([1]);
+  const INDIVIDUAL_START_ROUNDS = new Set([2]);
+
   const { data, error } = await supabase
     .from("rounds")
     .select("*")
