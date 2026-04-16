@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { TEST_MODE_COOKIE } from "@/lib/test-mode";
 import { createHash } from "node:crypto";
 
 export const ADMIN_SESSION_COOKIE = "mb_admin_session";
@@ -49,18 +48,6 @@ export function getAdminSessionCookieValue() {
 }
 
 export async function requireAdmin(request: Request) {
-  const cookieHeader = request.headers.get("cookie") ?? "";
-  const isTestBypass =
-    process.env.NODE_ENV !== "production" &&
-    cookieHeader
-      .split(";")
-      .map((entry) => entry.trim())
-      .some((entry) => entry === `${TEST_MODE_COOKIE}=true`);
-
-  if (isTestBypass) {
-    return null;
-  }
-
   if (!hasConfiguredAdminPassword()) {
     return NextResponse.json(
       { error: "Admin password is not configured" },

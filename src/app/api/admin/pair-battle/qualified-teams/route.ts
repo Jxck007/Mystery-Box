@@ -32,12 +32,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(pendingTeams ?? []);
   }
 
-  // Backward compatibility fallback: derive from active survivors.
+  // Derive from all teams to show top 24 vs others in the selection pool
   const { data: teams, error } = await supabase
     .from("teams")
     .select("id, name, leader_name, score, is_active, eliminated_round, updated_at, created_at")
-    .eq("is_active", true)
-    .is("eliminated_round", null)
     .order("score", { ascending: false })
     .order("updated_at", { ascending: true })
     .order("created_at", { ascending: true })

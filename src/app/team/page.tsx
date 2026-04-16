@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { GAME_CONFIGS } from "./game-panels";
-import { getTestRoundNumber, isTestModeEnabled, setTestRoundNumber } from "@/lib/test-mode";
 import { playSound } from "@/lib/sound-manager";
 import { SecurityManager } from "@/lib/security-manager";
 import { MysteryBox } from "./components/mystery-box";
@@ -94,6 +93,16 @@ export default function TeamDashboardPage() {
   const [currentGame, setCurrentGame] = useState<GameRecord | null>(null);
   const [currentOpen, setCurrentOpen] = useState<BoxOpen | null>(null);
   const [round, setRound] = useState<RoundRecord | null>(null);
+  const [boxes, setBoxes] = useState<GameRecord[]>([]);
+  const redirectingRef = useRef(false);
+
+  useEffect(() => {
+    if (round?.round_number === 1 && round?.status === "active" && boxes.length > 0 && !redirectingRef.current) {
+      redirectingRef.current = true;
+      router.push(`/game/${boxes[0].id}`);
+    }
+  }, [round?.status, round?.round_number, boxes, router]);
+
   const [events, setEvents] = useState<TeamEvent[]>([]);
   const [edgeToast, setEdgeToast] = useState<TeamEvent | null>(null);
   const lastEventIdRef = useRef<string | null>(null);
@@ -107,12 +116,9 @@ export default function TeamDashboardPage() {
   const [revealedGame, setRevealedGame] = useState<GameRecord | null>(null);
   const [revealedOpenRecord, setRevealedOpenRecord] = useState<BoxOpen | null>(null);
   const [briefingBusy, setBriefingBusy] = useState(false);
-  const [testRound, setTestRound] = useState(1);
   const [unlockFlow, setUnlockFlow] = useState<UnlockFlow>("locked");
   const [showUnlockVideo, setShowUnlockVideo] = useState(false);
   const [dismissedRevealOpenId, setDismissedRevealOpenId] = useState<string | null>(null);
-  const [testMode, setTestMode] = useState(false);
-  const [testModeReady, setTestModeReady] = useState(false);
 
   const [securityLockActive, setSecurityLockActive] = useState(false);
   const [lockSecondsRemaining, setLockSecondsRemaining] = useState(0);
@@ -126,10 +132,32 @@ export default function TeamDashboardPage() {
   const quickSwitchCountRef = useRef(0);
   const adminGestureCountRef = useRef(0);
   const adminGestureTimerRef = useRef<number | null>(null);
-  const protectionCleanupRef = useRef<() => void>(() => undefined);
+
+  const [nowTime, setNowTime] = useState(() => Date.now());
 
   useEffect(() => {
-    // Prime browser cache so the unlock animation video starts faster on first play.
+    const id = window.setInterval(() => setNowTime(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const getLiveRemaining = useCallback(
+    (r: RoundRecord | null) => {
+      const duration = r?.duration_seconds ?? 180;
+      if (!r) return duration;
+      if (r.status === "ended") return 0;
+      if (r.status === "waiting") return duration;
+      if (r.status === "active") {
+        if (!r.started_at) return duration;
+        const startedAt = new Date(r.started_at).getTime();
+        const elapsedLive = Math.floor((nowTime - startedAt) / 1000);
+        return Math.max(0, duration - elapsedLive);
+      }
+      return duration;
+    },
+    [nowTime],
+  );
+
+  useEffect(() => {
     const preloadLink = document.createElement("link");
     preloadLink.rel = "preload";
     preloadLink.as = "video";
@@ -143,37 +171,8 @@ export default function TeamDashboardPage() {
     };
   }, []);
 
-  useEffect(() => {
-    setTestMode(isTestModeEnabled());
-    setTestModeReady(true);
-  }, []);
-
   const fetchBoxes = useCallback(async () => {
     if (!session) return;
-    if (testMode) {
-      const activeTestRound = getTestRoundNumber();
-      setTestRound(activeTestRound);
-      setCurrentGame({
-        id: `test-box-${GAME_CONFIGS[0].key}`,
-        game_title: GAME_CONFIGS[0].title,
-        game_description: "Test mode mock game.",
-        game_type: GAME_CONFIGS[0].key,
-        points_value: 100,
-        round_number: activeTestRound,
-      });
-      setCurrentOpen(null);
-      setRound({
-        id: "test-round",
-        status: "active",
-        round_number: activeTestRound,
-        duration_seconds: 300,
-        elapsed_seconds: 0,
-        remaining_seconds: 300,
-      });
-      setEvents([]);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     const response = await fetch(`/api/boxes?teamId=${session.teamId}`, {
       cache: "no-store",
@@ -193,23 +192,10 @@ export default function TeamDashboardPage() {
       router.push("/");
     }
     setLoading(false);
-  }, [session, router, testMode]);
+  }, [session, router]);
 
   const fetchTeam = useCallback(async () => {
     if (!session) return;
-    if (testMode) {
-      const activeTestRound = getTestRoundNumber();
-      setTeam({
-        id: "test-team",
-        name: "TEST COLLECTIVE",
-        leader_name: session.playerName,
-        score: 0,
-        member_count: 3,
-        max_members: 4,
-        round2_status: activeTestRound === 2 ? "pending" : null,
-      });
-      return;
-    }
     const response = await fetch("/api/teams/list?includeInactive=true");
     const data = await response.json();
     if (response.ok && Array.isArray(data)) {
@@ -218,18 +204,10 @@ export default function TeamDashboardPage() {
         setTeam(matching);
       }
     }
-  }, [session, testMode]);
+  }, [session]);
 
   const fetchMembers = useCallback(async () => {
     if (!session) return;
-    if (testMode) {
-      setMembers([
-        { id: "m1", display_name: session.playerName, joined_at: new Date().toISOString() },
-        { id: "m2", display_name: "NODE_02", joined_at: new Date().toISOString() },
-        { id: "m3", display_name: "NODE_03", joined_at: new Date().toISOString() },
-      ]);
-      return;
-    }
     const response = await fetch(`/api/teams/${session.teamId}/players`, {
       cache: "no-store",
     });
@@ -239,77 +217,51 @@ export default function TeamDashboardPage() {
       return;
     }
     setMembers([]);
-  }, [session, testMode]);
+  }, [session]);
 
   useEffect(() => {
-    if (!testModeReady) return;
-    const id = window.setTimeout(() => {
-      if (testMode) {
-        localStorage.setItem("team_id", "test-team");
-        localStorage.setItem("player_name", "TEST_OPERATOR");
-        localStorage.setItem("is_leader", "true");
-        setSession({
-          teamId: "test-team",
-          playerName: "TEST_OPERATOR",
-          isLeader: true,
-        });
+    supabaseBrowser.auth.getSession().then(async ({ data }) => {
+      if (!data.session) {
+        router.replace("/auth?redirect=/team");
         return;
       }
 
-      supabaseBrowser.auth.getSession().then(async ({ data }) => {
-        if (!data.session) {
-          router.replace("/auth?redirect=/team");
-          return;
-        }
-
-        const response = await fetch("/api/players/me", {
-          headers: { Authorization: `Bearer ${data.session.access_token}` },
-        });
-        const payload = await response.json().catch(() => null);
-        if (!response.ok || !payload?.team) {
-          router.replace("/create-team");
-          return;
-        }
-
-        localStorage.setItem("team_id", payload.team.id);
-        localStorage.setItem("player_name", payload.display_name);
-        localStorage.setItem(
-          "is_leader",
-          payload.team.leader_name === payload.display_name ? "true" : "false",
-        );
-        setSession({
-          teamId: payload.team.id,
-          playerName: payload.display_name,
-          isLeader: payload.team.leader_name === payload.display_name,
-        });
+      const response = await fetch("/api/players/me", {
+        headers: { Authorization: `Bearer ${data.session.access_token}` },
       });
-    }, 0);
-    return () => window.clearTimeout(id);
-  }, [router, testMode, testModeReady]);
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.team) {
+        router.replace("/create-team");
+        return;
+      }
+
+      localStorage.setItem("team_id", payload.team.id);
+      localStorage.setItem("player_name", payload.display_name);
+      localStorage.setItem(
+        "is_leader",
+        payload.team.leader_name === payload.display_name ? "true" : "false",
+      );
+      setSession({
+        teamId: payload.team.id,
+        playerName: payload.display_name,
+        isLeader: payload.team.leader_name === payload.display_name,
+      });
+    });
+  }, [router]);
 
   useEffect(() => {
-    if (!testModeReady) return;
-    if (testMode) {
-      setAuthEmail("test.mode@local");
-      return;
-    }
     const readAuth = async () => {
       const { data } = await supabaseBrowser.auth.getUser();
       setAuthEmail(data.user?.email ?? null);
     };
     readAuth();
-  }, [testMode, testModeReady]);
+  }, []);
 
   useEffect(() => {
-    if (!session) {
-      return;
-    }
-    const id = window.setTimeout(() => {
-      fetchBoxes();
-      fetchTeam();
-      fetchMembers();
-    }, 0);
-    return () => window.clearTimeout(id);
+    if (!session) return;
+    fetchBoxes();
+    fetchTeam();
+    fetchMembers();
   }, [session, fetchBoxes, fetchTeam, fetchMembers]);
 
   useEffect(() => {
@@ -330,14 +282,6 @@ export default function TeamDashboardPage() {
       toastTimerRef.current = null;
     }, 2000);
   }, [events]);
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) {
-        window.clearTimeout(toastTimerRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (!session) return;
@@ -363,11 +307,6 @@ export default function TeamDashboardPage() {
   }, [round, unlockFlow]);
 
   useEffect(() => {
-    if (testMode) {
-      setSecurityLockActive(false);
-      SecurityManager.clearLock();
-      return;
-    }
     const cleanupProtection = SecurityManager.initializeProtection();
     const refreshLock = () => {
       const state = SecurityManager.getState();
@@ -399,14 +338,13 @@ export default function TeamDashboardPage() {
       window.clearInterval(lockInterval);
       document.documentElement.style.overflow = "";
     };
-  }, [testMode]);
+  }, []);
 
   useEffect(() => {
     document.documentElement.style.overflow = securityLockActive ? "hidden" : "";
   }, [securityLockActive]);
 
   useEffect(() => {
-    if (testMode) return;
     const isRoundOneActive = round?.round_number === 1 && round?.status === "active";
 
     const lockIfSuspicious = (reason: string) => {
@@ -514,7 +452,8 @@ export default function TeamDashboardPage() {
         window.clearTimeout(adminGestureTimerRef.current);
       }
     };
-  }, [round, testMode]);
+  }, [round]);
+
 
   useEffect(() => {
     if (!securityLockActive) return;
@@ -580,22 +519,27 @@ export default function TeamDashboardPage() {
 
     playSound("start_r1");
 
-    if (!testMode) {
-      // Execute in background without blocking navigation
-      fetch("/api/boxes/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId: session.teamId }),
-      }).catch((err) => {
-        console.error("Box start error:", err);
-      });
-    }
+    fetch("/api/boxes/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teamId: session.teamId }),
+    }).catch((err) => {
+      console.error("Box start error:", err);
+    });
 
     setBriefingBusy(false);
     setUnlockFlow("unlocked");
     const id = encodeURIComponent(revealedGame.id);
     router.push(`/game/${id}`);
   };
+
+  const formatTime = useCallback((seconds: number | null | undefined) => {
+    if (seconds === null || seconds === undefined) return "--:--";
+    const safe = Math.max(0, Math.floor(seconds));
+    const minutes = Math.floor(safe / 60);
+    const secs = safe % 60;
+    return `${minutes}:${secs.toString().padStart(2, "0")}`;
+  }, []);
 
   useEffect(() => {
     if (!session) return;
@@ -636,6 +580,7 @@ export default function TeamDashboardPage() {
       )
       .subscribe();
 
+
     return () => {
       supabaseBrowser.removeChannel(opensChannel);
       supabaseBrowser.removeChannel(roundsChannel);
@@ -660,21 +605,6 @@ export default function TeamDashboardPage() {
     setLoading(true);
 
     const openRequest = async (): Promise<{ game: GameRecord | null; open: BoxOpen | null } | null> => {
-      if (testMode) {
-        const activeTestRound = getTestRoundNumber();
-        const selectedConfig = GAME_CONFIGS[Math.floor(Math.random() * GAME_CONFIGS.length)];
-        const testGame = {
-          id: `test-box-${selectedConfig.key}-${Date.now()}`,
-          game_title: selectedConfig.title,
-          game_description: "Answer fast and build your streak. Wrong answers reduce your score input.",
-          game_type: selectedConfig.key,
-          points_value: 100,
-          round_number: activeTestRound,
-        };
-        const testOpen = { id: `test-open-${Date.now()}`, box_id: "test-box", status: "pending" as const };
-        return { game: testGame, open: testOpen };
-      }
-
       const response = await fetch("/api/boxes/open", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -728,8 +658,6 @@ export default function TeamDashboardPage() {
 
   const cinematicTransitionActive = unlockFlow === "preparing" || unlockFlow === "playingVideo"
   const hideDashboard = false;
-  const showRound2Prompt = round?.status === "active" && round?.round_number === 2;
-  const showRound3Prompt = round?.status === "active" && round?.round_number === 3;
   const isEliminated = Boolean(team?.eliminated_at);
 
   return (
@@ -772,43 +700,7 @@ export default function TeamDashboardPage() {
               </h1>
             </div>
 
-        {testMode && (
-        <div className="card space-y-3">
-          <p className="label">TEST MODE CONTROLS</p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={`button-secondary text-xs ${testRound === 1 ? "button-success" : ""}`}
-              onClick={() => {
-                setTestRoundNumber(1);
-                setTestRound(1);
-                fetchBoxes();
-              }}
-            >
-              ROUND 1
-            </button>
-            <button
-              type="button"
-              className={`button-secondary text-xs ${testRound === 2 ? "button-success" : ""}`}
-              onClick={() => {
-                setTestRoundNumber(2);
-                setTestRound(2);
-                fetchBoxes();
-                router.replace("/round2");
-              }}
-            >
-              ROUND 2
-            </button>
-            <button
-              type="button"
-              className="button-secondary text-xs"
-              onClick={() => router.push("/admin")}
-            >
-              ADMIN DASHBOARD
-            </button>
-          </div>
-        </div>
-        )}
+
 
         <div className="card space-y-4" style={{ borderTop: "3px solid var(--accent)" }}>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -870,27 +762,7 @@ export default function TeamDashboardPage() {
           </div>
         )}
 
-        {showRound2Prompt && (
-          <div className="banner paused">
-            Round 2 is active. Continue when your team is ready.
-            <div className="mt-3">
-              <button className="button-primary" onClick={() => router.push("/round2")}>
-                GO TO ROUND 2
-              </button>
-            </div>
-          </div>
-        )}
 
-        {showRound3Prompt && (
-          <div className="banner paused">
-            Round 3 is active. Continue from leaderboard view.
-            <div className="mt-3">
-              <button className="button-primary" onClick={() => router.push("/leaderboard")}>
-                GO TO LEADERBOARD
-              </button>
-            </div>
-          </div>
-        )}
 
         {roundBanner}
 
@@ -921,10 +793,14 @@ export default function TeamDashboardPage() {
               <p className="label">MYSTERY_BOX</p>
               <h2 className="font-headline text-3xl font-black uppercase">OPEN THE BOX</h2>
             </div>
-            {loading && (
-              <p className="text-sm text-[var(--text-muted)]">REFRESHING BOXES...</p>
-            )}
+            <div className="text-right">
+              <p className="label text-emerald-400">MISSION CLOCK</p>
+              <p className="font-headline text-3xl font-black text-emerald-400">
+                {formatTime(getLiveRemaining(round))}
+              </p>
+            </div>
           </div>
+
           {unlockFlow === "locked" && (
             <p className="text-sm text-[var(--text-muted)] text-center">
               Waiting for admin to start the round.

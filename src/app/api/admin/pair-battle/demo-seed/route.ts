@@ -21,6 +21,14 @@ const DEMO_TEAM_NAMES = [
   "Team Nova",
   "Team Orbit",
   "Team Phantom",
+  "Team Quasar",
+  "Team Rogue",
+  "Team Spectre",
+  "Team Titan",
+  "Team Ultra",
+  "Team Viper",
+  "Team Wraith",
+  "Team Zenith",
 ];
 
 function makeCode() {

@@ -3,14 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { disableTestMode, enableTestMode, isTestModeEnabled } from "@/lib/test-mode";
 import { playSound } from "@/lib/sound-manager";
 
 export default function HomePage() {
   const TEMP_SITE_PASSWORD = "jack123";
   const [isAuthed, setIsAuthed] = useState(false);
   const [hasTeam, setHasTeam] = useState(false);
-  const [testMode, setTestMode] = useState(false);
+
   const [unlocked, setUnlocked] = useState(false);
   const [unlockChecked, setUnlockChecked] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
@@ -24,13 +23,6 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!unlockChecked || !unlocked) return;
-    const localTest = isTestModeEnabled();
-    setTestMode(localTest);
-    if (localTest) {
-      setIsAuthed(true);
-      setHasTeam(true);
-      return;
-    }
     const check = async () => {
       const { data } = await supabaseBrowser.auth.getSession();
       if (!data.session) {
@@ -119,7 +111,7 @@ export default function HomePage() {
             <p className="text-sm text-(--text-muted)">
               INITIALIZE UNIT ACCESS, ENTER ACTIVE ROUND FLOW, AND EXECUTE OBJECTIVES.
             </p>
-            {!isAuthed && !testMode && (
+            {!isAuthed && (
               <Link
                 href="/auth?mode=signup"
                 className="button-primary w-full sm:w-auto text-center"
@@ -128,12 +120,12 @@ export default function HomePage() {
                 BEGIN ACCESS FLOW
               </Link>
             )}
-            {(isAuthed && hasTeam) || testMode ? (
+            {(isAuthed && hasTeam) ? (
               <Link href="/team" className="button-primary w-full sm:w-auto text-center" onClick={() => playSound("button_press")}>
                 OPEN TEAM CONSOLE
               </Link>
             ) : null}
-            {isAuthed && !hasTeam && !testMode && (
+            {isAuthed && !hasTeam && (
               <Link href="/create-team" className="button-primary w-full sm:w-auto text-center" onClick={() => playSound("button_press")}>
                 INITIALIZE TEAM UNIT
               </Link>
@@ -146,36 +138,6 @@ export default function HomePage() {
             <span className="label">NODE: INITIAL_ACCESS_GRID</span>
             <span className="label">LATENCY: 0.002MS</span>
             <span className="label">REGION: SECTOR_07</span>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {!testMode ? (
-              <button
-                className="button-secondary text-xs"
-                onClick={() => {
-                  playSound("button_press");
-                  enableTestMode();
-                  setTestMode(true);
-                  setIsAuthed(true);
-                  setHasTeam(true);
-                }}
-              >
-                ENABLE TEST MODE
-              </button>
-            ) : (
-              <button
-                className="button-danger text-xs"
-                onClick={() => {
-                  playSound("button_press");
-                  disableTestMode();
-                  setTestMode(false);
-                  setIsAuthed(false);
-                  setHasTeam(false);
-                }}
-              >
-                DISABLE TEST MODE
-              </button>
-            )}
-            {testMode && <span className="label text-(--accent)">TEST MODE ACTIVE (AUTH BYPASS)</span>}
           </div>
         </div>
       </section>

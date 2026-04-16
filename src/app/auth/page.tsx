@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { playSound } from "@/lib/sound-manager";
-import { isTestModeEnabled } from "@/lib/test-mode";
+import { playSound } from "@/lib/sound-manager";
 
 function AuthContent() {
   const router = useRouter();
@@ -24,17 +24,9 @@ function AuthContent() {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
-  const testMode = isTestModeEnabled();
-
   const handleGoogleSignIn = async () => {
     playSound("button_press");
     setStatus("");
-
-    if (testMode) {
-      playSound("auth_success");
-      router.replace(redirectTo);
-      return;
-    }
 
     setOauthLoading(true);
     const callbackUrl = `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`;
@@ -56,19 +48,6 @@ function AuthContent() {
     playSound("button_press");
     setStatus("");
     setLoading(true);
-
-    if (testMode) {
-      if (mode === "signup") {
-        playSound("auth_success");
-        setLoading(false);
-        router.replace("/create-team");
-        return;
-      }
-      playSound("auth_success");
-      setLoading(false);
-      router.replace(redirectTo);
-      return;
-    }
 
     if (mode === "signup") {
       if (!displayName.trim()) {

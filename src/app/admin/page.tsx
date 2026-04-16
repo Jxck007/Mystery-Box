@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { PairBattleBoard } from "@/app/components/pair-battle-board";
-import { ROUND1_SURVIVOR_LIMIT, ROUND2_PAIR_COUNT } from "@/lib/pair-battle";
+import { ROUND1_SURVIVOR_LIMIT } from "@/lib/pair-battle";
 
 type TeamDetail = {
   id: string;
@@ -23,10 +22,7 @@ type TeamDetail = {
   eliminated_at?: string | null;
   eliminated_round?: number | null;
   eliminated_position?: number | null;
-  round2_code?: string | null;
-  round2_lock_until?: string | null;
-  round2_solved_at?: string | null;
-  round2_status?: string | null;
+
 };
 
 type RoundRecord = {
@@ -58,7 +54,7 @@ type TeamEventLog = {
   created_at: string;
 };
 
-const ROUND2_QUALIFY_LIMIT = ROUND2_PAIR_COUNT;
+
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -71,14 +67,10 @@ export default function AdminDashboardPage() {
   >({});
   const [statusMessage, setStatusMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedRoundNumber, setSelectedRoundNumber] = useState<number>(1);
   const [nowTime, setNowTime] = useState(() => Date.now());
-  const [leaderboardStatus, setLeaderboardStatus] = useState("");
-  const [leaderboardRefreshing, setLeaderboardRefreshing] = useState(false);
   const [actionBusy, setActionBusy] = useState<Record<string, boolean>>({});
   const [eventLogs, setEventLogs] = useState<TeamEventLog[]>([]);
   const [expandedTeamLogs, setExpandedTeamLogs] = useState<Record<string, boolean>>({});
-  const [adminTab, setAdminTab] = useState<"round1" | "round2">("round1");
 
   const getAdminHeaders = useCallback(async () => {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -281,6 +273,12 @@ export default function AdminDashboardPage() {
     if (teamId) {
       payload.teamId = teamId;
     }
+    if (action === "start" && !teamId) {
+       setRounds((prev) => prev.map(r => r.round_number === roundNumber ? { ...r, status: "active", started_at: new Date().toISOString(), elapsed_seconds: 0 } : r));
+    }
+    if (action === "end" && !teamId) {
+       setRounds((prev) => prev.map(r => r.round_number === roundNumber ? { ...r, status: "ended", ended_at: new Date().toISOString() } : r));
+    }
 
     const adminHeaders = await getAdminHeaders();
 
@@ -304,6 +302,9 @@ export default function AdminDashboardPage() {
 
     setStatusMessage("Round updated.");
     await refreshAll();
+
+
+
     if (busyKey) {
       setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
     }
@@ -332,76 +333,6 @@ export default function AdminDashboardPage() {
     }
   };
 
-
-  const handleLoadDemoData = async (busyKey: string) => {
-    setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
-    setStatusMessage("Seeding demo teams for admin testing...");
-
-    const adminHeaders = await getAdminHeaders();
-    const response = await fetch("/api/admin/pair-battle/demo-seed", {
-      method: "POST",
-      headers: adminHeaders ?? undefined,
-    });
-
-    if (handleAdminAuthResponse(response)) {
-      return;
-    }
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setStatusMessage(data.error ?? "Unable to seed demo data.");
-      setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
-      return;
-    }
-
-    setStatusMessage(data.message ?? "Demo teams seeded for round panel testing.");
-    await refreshAll();
-    setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
-  };
-
-  const handleApplyElimination = async (
-    roundNumber: 1 | 2,
-    busyKey: string,
-  ) => {
-    setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
-    setStatusMessage(
-      roundNumber === 1
-        ? `Applying Round 1 cut: top ${ROUND1_SURVIVOR_LIMIT} by score...`
-        : `Applying Round 2 cut: first ${ROUND2_QUALIFY_LIMIT} solvers...`,
-    );
-
-    const adminHeaders = await getAdminHeaders();
-
-    const response = await fetch("/api/admin/elimination/apply", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(adminHeaders ?? {}) },
-      body: JSON.stringify({ roundNumber }),
-    });
-
-    if (handleAdminAuthResponse(response)) {
-      return;
-    }
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setStatusMessage(data.error ?? "Unable to apply elimination.");
-      setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
-      return;
-    }
-
-    setStatusMessage(
-      roundNumber === 1
-        ? `Round 1 elimination applied. Top ${ROUND1_SURVIVOR_LIMIT} remain active.`
-        : `Round 2 elimination applied. First ${ROUND2_QUALIFY_LIMIT} solved teams qualified.`,
-    );
-    if (roundNumber === 1) {
-      setAdminTab("round2");
-      setSelectedRoundNumber(2);
-    }
-    await refreshAll();
-    setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
-  };
-
   useEffect(() => {
     if (!authorized || teams.length === 0) return;
     const missing = teams.filter((team) => !membersCache[team.id]);
@@ -418,10 +349,6 @@ export default function AdminDashboardPage() {
       setMembersCache((prev) => ({ ...prev, [team.id]: [] }));
     });
   }, [authorized, teams, membersCache]);
-
-  const sortedLeaderboard = useMemo(() => {
-    return [...leaderboard].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  }, [leaderboard]);
 
   const sortedTeamsByScore = useMemo(() => {
     return [...teams].sort((a, b) => {
@@ -453,7 +380,7 @@ export default function AdminDashboardPage() {
       });
   }, [teams]);
 
-  const top16LiveTeams = useMemo(() => {
+  const topQualifiersLive = useMemo(() => {
     return sortedActiveTeamsByScore.slice(0, ROUND1_SURVIVOR_LIMIT);
   }, [sortedActiveTeamsByScore]);
 
@@ -488,22 +415,6 @@ export default function AdminDashboardPage() {
       });
   }, [eventLogs]);
 
-  const eliminationSummary = useMemo(() => {
-    const totalTeams = sortedTeamsByScore.length;
-    const activeTeams = sortedActiveTeamsByScore.length;
-    const round1Cut = Math.min(activeTeams, ROUND1_SURVIVOR_LIMIT);
-    const round2Cut = Math.min(round1Cut, ROUND2_QUALIFY_LIMIT);
-    return { totalTeams, activeTeams, round1Cut, round2Cut };
-  }, [sortedTeamsByScore, sortedActiveTeamsByScore]);
-
-  const round2SolvedCount = useMemo(() => {
-    return teams.filter((team) => Boolean(team.round2_solved_at)).length;
-  }, [teams]);
-
-  const round2QualifiedCount = useMemo(() => {
-    return teams.filter((team) => team.round2_status === "qualified").length;
-  }, [teams]);
-
   const round1Ended = useMemo(() => {
     return rounds.some((round) => (round.round_number ?? 0) === 1 && round.status === "ended");
   }, [rounds]);
@@ -515,87 +426,6 @@ export default function AdminDashboardPage() {
   const eliminationRows = useMemo(() => {
     return round1Ended ? sortedTeamsByScore : sortedActiveTeamsByScore;
   }, [round1Ended, sortedTeamsByScore, sortedActiveTeamsByScore]);
-
-  const round2TabUnlocked = useMemo(() => {
-    if (round1Ended) return true;
-    const activeTeamCount = teams.filter((team) => team.is_active !== false).length;
-    if (activeTeamCount > 0 && activeTeamCount <= ROUND1_SURVIVOR_LIMIT) return true;
-    return teams.some(
-      (team) =>
-        team.eliminated_round === 1 ||
-        team.round2_status === "pending" ||
-        team.round2_status === "qualified",
-    );
-  }, [round1Ended, teams]);
-
-  const activeRoundNumber = useMemo(() => {
-    const activeRound = rounds.find((round) => round.status === "active");
-    if (activeRound?.round_number) return activeRound.round_number;
-    const pausedRound = rounds.find((round) => round.status === "paused");
-    if (pausedRound?.round_number) return pausedRound.round_number;
-    const waitingRound = rounds.find((round) => round.status === "waiting");
-    if (waitingRound?.round_number) return waitingRound.round_number;
-    return rounds[0]?.round_number ?? 1;
-  }, [rounds]);
-
-  const roundOrder = useMemo(
-    () => rounds.map((round) => round.round_number ?? 0).filter(Boolean),
-    [rounds],
-  );
-
-  const availableRounds = useMemo(() => {
-    if (roundOrder.length === 0) return [] as number[];
-    const available: number[] = [];
-    roundOrder.forEach((roundNumber, index) => {
-      if (index === 0) {
-        available.push(roundNumber);
-        return;
-      }
-      const prevNumber = roundOrder[index - 1];
-      const prevRound = rounds.find((round) => round.round_number === prevNumber);
-      if (prevRound?.status === "ended") {
-        available.push(roundNumber);
-      }
-    });
-    return available;
-  }, [roundOrder, rounds]);
-
-  const selectedRound = useMemo(() => {
-    return (
-      rounds.find((round) => round.round_number === selectedRoundNumber) ??
-      rounds.find((round) => round.round_number === activeRoundNumber) ??
-      rounds[0] ??
-      null
-    );
-  }, [rounds, selectedRoundNumber, activeRoundNumber]);
-
-  const round2Round = useMemo(() => {
-    return rounds.find((round) => (round.round_number ?? 0) === 2) ?? null;
-  }, [rounds]);
-
-  const isSelectedRoundAvailable = useMemo(() => {
-    if (!selectedRound?.round_number) return false;
-    return availableRounds.includes(selectedRound.round_number);
-  }, [selectedRound, availableRounds]);
-
-  useEffect(() => {
-    if (availableRounds.length === 0) return;
-    if (!availableRounds.includes(selectedRoundNumber)) {
-      setSelectedRoundNumber(availableRounds[0]);
-    }
-  }, [availableRounds, selectedRoundNumber]);
-
-  useEffect(() => {
-    if (adminTab === "round2" && !round2TabUnlocked) {
-      setAdminTab("round1");
-    }
-  }, [adminTab, round2TabUnlocked]);
-
-  useEffect(() => {
-    if (adminTab === "round1") {
-      setSelectedRoundNumber(1);
-    }
-  }, [adminTab]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -614,26 +444,46 @@ export default function AdminDashboardPage() {
 
   const getLiveRemaining = useCallback(
     (round: RoundRecord | null) => {
-      if (!round || !round.duration_seconds) return null;
+      const duration = round?.duration_seconds ?? 180;
+      if (!round) return duration;
       if (round.status === "ended") return 0;
+      if (round.status === "waiting") return duration;
       if (round.status === "paused") {
         return Math.max(
           0,
           round.remaining_seconds ??
-            round.duration_seconds - (round.elapsed_seconds ?? 0),
+          duration - (round.elapsed_seconds ?? 0),
         );
       }
-      if (round.status === "active" && round.started_at) {
+      if (round.status === "active") {
+        if (!round.started_at) {
+          return duration - (round.elapsed_seconds ?? 0);
+        }
         const startedAt = new Date(round.started_at).getTime();
         const elapsedBase = round.elapsed_seconds ?? 0;
         const elapsedLive = Math.floor((nowTime - startedAt) / 1000);
         const totalElapsed = elapsedBase + Math.max(0, elapsedLive);
-        return Math.max(0, round.duration_seconds - totalElapsed);
+        return Math.max(0, duration - totalElapsed);
       }
       return round.remaining_seconds ?? null;
     },
     [nowTime],
   );
+
+  useEffect(() => {
+    if (!authorized) return;
+    const activeRound = rounds.find((r) => r.status === "active");
+    if (!activeRound) return;
+    if ((activeRound.round_number ?? 0) !== 1) return;
+
+    const remaining = getLiveRemaining(activeRound);
+    if (remaining !== null && remaining <= 0 && activeRound.round_number === 1) {
+      const endKey = `auto-end-1`;
+      if (!actionBusy[endKey]) {
+        void handleRoundAction("end", 1, undefined, endKey);
+      }
+    }
+  }, [authorized, rounds, getLiveRemaining, actionBusy, handleRoundAction]);
 
   if (!authorized) return null;
 
@@ -645,7 +495,7 @@ export default function AdminDashboardPage() {
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", opacity: 0.5 }}>V.2.0.4_STABLE</div>
         </div>
         <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
-          {["ROUND CONTROL", "SCORES", "ELIMINATION", "PAIR BATTLE", "LIVE LOGS"].map((item) => (
+          {["ROUND CONTROL", "SCORES", "ELIMINATION", "LIVE LOGS"].map((item) => (
             <div key={item} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.15em", textTransform: "uppercase", fontWeight: 700 }}>
               {item}
             </div>
@@ -677,466 +527,201 @@ export default function AdminDashboardPage() {
               <span className="label">ADMIN CONTROL PANEL</span>
               <button
                 type="button"
-                className={`button-neutral text-xs ${adminTab === "round1" ? "ring-2 ring-sky-400" : ""}`}
-                onClick={() => setAdminTab("round1")}
+                className="button-neutral text-xs ring-2 ring-sky-400"
               >
                 Round 1
               </button>
-              <button
-                type="button"
-                className={`button-neutral text-xs ${adminTab === "round2" ? "ring-2 ring-cyan-400" : ""}`}
-                onClick={() => setAdminTab("round2")}
-                disabled={!round2TabUnlocked}
-              >
-                Round 2
-              </button>
-              {!round2TabUnlocked && (
-                <span className="label text-[var(--text-muted)]">Unlocks after Round 1 cut</span>
-              )}
             </div>
-          </div>
-
-          <div className="min-h-6" aria-live="polite">
+          </div>          <div className="min-h-6" aria-live="polite">
             {statusMessage && <p className="text-sm text-sky-300">{statusMessage}</p>}
           </div>
 
-          {adminTab === "round1" && (
-            <>
           <div className="card admin-section space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="label">Round control</p>
-            <h2 className="text-2xl font-semibold">Round control</h2>
-            <p className="text-sm text-slate-300">
-              Start a round for all teams, then pause or resume a single team
-              if they need extra time after the real-world task.
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {rounds.filter((round) => (round.round_number ?? 0) === 1).map((round) => {
-            const roundNumber = round.round_number ?? 0;
-            const isAvailable = availableRounds.includes(roundNumber);
-            const isSelected = roundNumber === (selectedRound?.round_number ?? 0);
-            return (
-              <button
-                key={round.id}
-                type="button"
-                className={`button-neutral text-sm ${
-                  isSelected ? "ring-2 ring-sky-400" : ""
-                }`}
-                onClick={() => setSelectedRoundNumber(roundNumber)}
-                disabled={!isAvailable}
-              >
-                {roundNumber === 1 ? "Round 1 Control" : `Round ${roundNumber}`}
-              </button>
-            );
-          })}
-        </div>
-
-        {rounds.length === 0 && (
-          <p className="text-sm text-slate-300">
-            No round records found yet. Seed round data to unlock Start Round 1 controls.
-          </p>
-        )}
-
-        {selectedRound && (
-          <div className="rounded-2xl border border-slate-700/50 p-4 bg-slate-900/60 shadow-sm max-w-2xl">
-            <p className="text-xs uppercase tracking-wide text-slate-400">
-              Round {selectedRound.round_number}
-            </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm text-slate-300">Status: {selectedRound.status}</p>
-              <p className="text-sm text-slate-300">
-                Time left: {formatTime(getLiveRemaining(selectedRound))}
-              </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="label">Mystery Box Phase</p>
+                <h2 className="text-2xl font-semibold">Mission Control Center</h2>
+                <p className="text-sm text-slate-300">
+                  Manage Round 1 operations. The mission clock and team synchronization are fully automated.
+                </p>
+              </div>
             </div>
-            <div className="admin-action-grid mt-2">
-              {(() => {
-                const roundKey = `round-${selectedRound.round_number ?? 0}-toggle`;
-                const roundBusy = actionBusy[roundKey];
-                const isActive = selectedRound.status === "active";
-                return (
-                  <button
-                    className={`admin-action-button ${
-                      isActive ? "button-danger" : "button-success"
-                    }`}
-                    onClick={() =>
-                      handleRoundAction(
-                        isActive ? "end" : "start",
-                        selectedRound.round_number ?? 1,
-                        undefined,
-                        roundKey,
-                      )
-                    }
-                    disabled={!isSelectedRoundAvailable || roundBusy}
-                  >
-                    {roundBusy
-                      ? "Syncing..."
-                      : isActive
-                      ? "End Round"
-                      : "Start Round"}
-                  </button>
-                );
-              })()}
-            </div>
-          </div>
-        )}
-
-        {selectedRound?.round_number === 1 && (
-          <div className="rounded-2xl border border-emerald-500/30 p-4 bg-emerald-950/20 shadow-sm max-w-2xl">
-            <p className="text-xs uppercase tracking-wide text-emerald-300">Round 1 Bulk Start</p>
-            <h3 className="mt-1 text-lg font-semibold text-slate-100">Start All Teams At Once</h3>
-            <p className="mt-1 text-sm text-slate-300">
-              Starts Round 1 for every team in one command from the admin panel.
-            </p>
-            <div className="mt-3">
-              {(() => {
-                const busyKey = "round1-start-all";
-                const busy = actionBusy[busyKey];
-                return (
-                  <button
-                    className="admin-action-button button-success"
-                    onClick={() => handleRoundAction("start", 1, undefined, busyKey)}
-                    disabled={busy}
-                  >
-                    {busy ? "Syncing..." : "Start All Teams"}
-                  </button>
-                );
-              })()}
-            </div>
-          </div>
-        )}
-
-        <div className="rounded-2xl border border-cyan-500/30 p-4 bg-cyan-950/20 shadow-sm max-w-2xl">
-          <p className="text-xs uppercase tracking-wide text-cyan-300">Demo Mode</p>
-          <h3 className="mt-1 text-lg font-semibold text-slate-100">Load Demo Data For Round Admin Testing</h3>
-          <p className="mt-1 text-sm text-slate-300">
-            Seeds up to 16 demo teams so you can test round start, score flow, and elimination behavior quickly.
-          </p>
-          <div className="mt-3">
             {(() => {
-              const busyKey = "demo-seed-round-panel";
-              const busy = actionBusy[busyKey];
+              const r1 = rounds.find(r => (r.round_number ?? 0) === 1) || {
+                round_number: 1,
+                status: "waiting",
+                duration_seconds: 180,
+                elapsed_seconds: 0
+              };
+              const isActive = r1.status === "active";
+              const isEnded = r1.status === "ended";
+              const remaining = getLiveRemaining(r1 as RoundRecord);
+              const total = r1.duration_seconds ?? 180;
+              const pct = Math.max(0, (remaining ?? total) / total);
+              const circumference = 2 * Math.PI * 24;
+              const dashOffset = circumference * (1 - pct);
+              const isDanger = remaining !== null && remaining <= 30 && isActive;
+
+              const startKey = "round1-start";
+              const endKey = "round1-end";
+              const startBusy = actionBusy[startKey];
+              const endBusy = actionBusy[endKey];
+
               return (
-                <button
-                  className="admin-action-button button-neutral"
-                  onClick={() => void handleLoadDemoData(busyKey)}
-                  disabled={busy}
-                >
-                  {busy ? "Syncing..." : "Load Demo Teams"}
-                </button>
+                <div className="round-card" data-active={isActive}>
+                  <div className="round-card-header">
+                    <span className="round-card-title">Round 1 (Mission Clock)</span>
+                    <div className="live-status" data-status={
+                      isActive ? "live"
+                        : r1.status === "paused" ? "ongoing"
+                          : isEnded ? "completed"
+                            : "waiting"
+                    }>
+                      <span className="status-dot" />
+                      {isActive ? "ACTIVE"
+                        : r1.status === "paused" ? "PAUSED"
+                          : isEnded ? "COMPLETED"
+                            : "PENDING"}
+                    </div>
+                  </div>
+
+                  <div className="countdown-block" data-danger={isDanger}>
+                    <div className="countdown-ring">
+                      <svg viewBox="0 0 56 56">
+                        <circle className="ring-bg" cx="28" cy="28" r="24" />
+                        <circle className="ring-progress" cx="28" cy="28" r="24"
+                          strokeDasharray={circumference}
+                          strokeDashoffset={dashOffset}
+                        />
+                      </svg>
+                      <span className="countdown-time">{Math.round(pct * 100)}%</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                        <span className="countdown-label text-[var(--accent)] font-bold">Time Authorized</span>
+                        <span className="countdown-value text-white shadow-glow-sm">
+                          {formatTime(isActive ? remaining : (isEnded ? 0 : 180))}
+                        </span>
+                      </div>
+                  </div>
+
+                  <div className="admin-action-grid mt-6 gap-4">
+                    <button
+                      className="admin-action-button button-success cursor-pointer scale-105 shadow-emerald-500/20 shadow-lg"
+                      style={{ background: "#10b981", color: "#062016", border: "none", fontWeight: 800 }}
+                      onClick={() => handleRoundAction("start", 1, undefined, startKey)}
+                      disabled={isActive || startBusy}
+                    >
+                      {startBusy ? "INITIALIZING..." : "▶ LAUNCH ROUND 1"}
+                    </button>
+                    <button
+                      className="admin-action-button button-danger cursor-pointer scale-105 shadow-rose-500/20 shadow-lg"
+                      style={{ background: "#ef4444", color: "#3e0a0a", border: "none", fontWeight: 800 }}
+                      onClick={() => handleRoundAction("end", 1, undefined, endKey)}
+                      disabled={!isActive || endBusy}
+                    >
+                      {endBusy ? "TERMINATING..." : "⏹ END ROUND 1"}
+                    </button>
+                  </div>
+                </div>
               );
             })()}
           </div>
-        </div>
 
-        <div className="card admin-section space-y-4">
-          <div>
-            <p className="label">Live logs</p>
-            <h2 className="text-2xl font-semibold">Team activity feed (grouped)</h2>
-            <p className="text-sm text-slate-300">
-              Click a team row to expand or collapse its activity history.
-            </p>
-          </div>
-          <div className="space-y-2 max-h-72 overflow-auto">
-            {groupedTeamLogs.length === 0 && (
-              <p className="text-sm text-slate-400">No events yet.</p>
-            )}
-            {groupedTeamLogs.map((group) => {
-              const expanded = Boolean(expandedTeamLogs[group.teamId]);
-              const latest = group.events[0];
-              return (
-                <div key={group.teamId} className="rounded-xl border border-slate-700/40 bg-slate-900/60 p-3">
-                  <button
-                    type="button"
-                    className="w-full text-left"
-                    onClick={() =>
-                      setExpandedTeamLogs((prev) => ({
-                        ...prev,
-                        [group.teamId]: !expanded,
-                      }))
-                    }
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-slate-100">{group.teamName}</p>
-                      <p className="text-xs text-slate-400">
-                        {group.events.length} event{group.events.length !== 1 ? "s" : ""}
-                      </p>
-                    </div>
-                    {latest && (
-                      <p className="text-xs text-slate-400 mt-1">
-                        Latest: {new Date(latest.created_at).toLocaleTimeString()} - {latest.message}
-                      </p>
-                    )}
-                  </button>
-
-                  {expanded && (
-                    <div className="mt-3 space-y-2">
-                      {group.events.map((event) => (
-                        <div key={event.id} className="rounded-lg border border-slate-700/40 bg-slate-950/60 p-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs uppercase tracking-wide text-slate-500">{event.event_type}</p>
-                            <p className="text-xs text-slate-400">
-                              {new Date(event.created_at).toLocaleTimeString()}
-                            </p>
-                          </div>
-                          <p className="text-sm text-slate-200">{event.message}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-
-          <div className="card admin-section space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="label">Leaderboard</p>
-            <h2 className="text-2xl font-semibold">Live standings</h2>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="leaderboard-table">
-            <thead>
-              <tr>
-                <th>Team</th>
-                <th>Members</th>
-                <th>Score</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(round1Active ? top16LiveTeams : sortedTeamsByScore).map((team) => (
-                <tr key={team.id}>
-                  <td>
-                    <div className="font-semibold text-slate-100">{team.name}</div>
-                    <div className="text-xs text-slate-400">
-                      Leader: {team.leader_name ?? "-"}
-                    </div>
-                  </td>
-                  <td className="text-sm text-slate-300">
-                    {team.member_count ?? 0}/{team.max_members ?? "-"}
-                  </td>
-                  <td>{team.score ?? 0}</td>
-                  <td>
-                    <div className="text-xs text-slate-300">
-                      {team.eliminated_at
-                        ? `Eliminated (Round ${team.eliminated_round ?? "?"})`
-                        : team.current_round_status === "paused"
-                        ? "Suspended"
-                        : "Active"}
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      {team.eliminated_position
-                        ? `Position: ${team.eliminated_position}`
-                        : "Global rounds"}
-                    </div>
-                    {team.current_round_remaining_seconds !== null &&
-                      team.current_round_remaining_seconds !== undefined && (
-                        <div className="mt-1 text-xs text-slate-300">
-                          Time left: {formatTime(team.current_round_remaining_seconds)}
-                        </div>
-                      )}
-                  </td>
-                  <td>
-                    <div className="admin-action-grid">
-                      {(() => {
-                        const removeKey = `team-${team.id}-remove`;
-                        const removeBusy = actionBusy[removeKey];
-                        return (
-                          <button
-                            className="admin-action-button button-danger"
-                            onClick={() => handleRemoveTeam(team.id, removeKey)}
-                            disabled={removeBusy}
-                          >
-                            {removeBusy ? "Syncing..." : "Remove Team"}
-                          </button>
-                        );
-                      })()}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-          <div className="card admin-section space-y-4">
-        <div>
-          <p className="label">Tournament board</p>
-          <h2 className="text-2xl font-semibold">Elimination tracker</h2>
-              <p className="text-sm text-slate-300">
-                Round 1 keeps top {ROUND1_SURVIVOR_LIMIT} teams by score. Round 2 keeps first {ROUND2_QUALIFY_LIMIT} teams to solve the code.
-              </p>
-        </div>
-        <div className="flex flex-wrap gap-2 text-sm text-slate-300">
-          <span>Active teams: {eliminationSummary.activeTeams}</span>
-          <span>Round 1 cut: Top {eliminationSummary.round1Cut} active teams</span>
-              <span>Round 2 cut: First {eliminationSummary.round2Cut} solves</span>
-              <span>Round 2 solved: {round2SolvedCount}</span>
-              <span>Round 2 selected: {round2QualifiedCount}/{ROUND2_PAIR_COUNT}</span>
-          <span>
-            Status: {round2QualifiedCount > 0
-              ? `Round 2 in progress (${round2QualifiedCount}/${ROUND2_PAIR_COUNT} selected)`
-              : round1Ended
-              ? "Round 1 cut applied"
-              : "Waiting for official round end"}
-          </span>
-        </div>
-            <div className="admin-action-grid">
-              {(() => {
-                const busyKey = "elimination-round1";
-                const busy = actionBusy[busyKey];
-                const disabled = busy || !round1Ended;
-                return (
-                  <button
-                    className="admin-action-button button-neutral"
-                    onClick={() => handleApplyElimination(1, busyKey)}
-                    disabled={disabled}
-                    title={!round1Ended ? "End Round 1 before applying Top 16 cut" : ""}
-                  >
-                    {busy ? "Syncing..." : `Apply Round 1 Cut (Top ${ROUND1_SURVIVOR_LIMIT})`}
-                  </button>
-                );
-              })()}
-              <div className="rounded-lg border border-slate-700/50 bg-slate-900/70 px-3 py-2 text-xs text-slate-300">
-                Round 2 elimination is automatic in pair battle mode.
-              </div>
-            </div>
-        <div className="overflow-x-auto">
-          <table className="leaderboard-table">
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>Team</th>
-                <th>Score</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {eliminationRows.map((team, index) => {
-                const rank = index + 1;
-                const isActuallyRound1Selected =
-                  team.is_active !== false && team.eliminated_round !== 1;
-                const isProjectedRound1Selected = projectedRound1SelectedIds.has(team.id);
-                let statusLabel = "In play";
-                if (team.round2_status === "qualified") {
-                  statusLabel = "Round 2 Selected";
-                } else if (team.round2_status === "eliminated" || (team.round2_solved_at && team.round2_status !== "qualified")) {
-                  statusLabel = "Round 2 Out";
-                } else if (round1Ended) {
-                  statusLabel = isActuallyRound1Selected ? "Selected" : "Not Selected";
-                } else {
-                  statusLabel = isProjectedRound1Selected ? "Projected Selected" : "Projected Out";
-                }
-                const rowClass =
-                  statusLabel === "Winner"
-                    ? "bg-emerald-500/10"
-                    : statusLabel === "Round 2 Selected"
-                    ? "bg-sky-500/10"
-                    : statusLabel === "Selected"
-                    ? "bg-lime-500/20"
-                    : statusLabel === "Projected Selected"
-                    ? "bg-lime-500/10"
-                    : statusLabel === "Not Selected"
-                    ? "bg-rose-600/20"
-                    : statusLabel === "Projected Out"
-                    ? "bg-rose-600/10"
-                    : statusLabel === "Round 2 Out"
-                    ? "bg-amber-600/15"
-                    : "";
-
-                return (
-                  <tr key={team.id} className={rowClass}>
-                    <td>{rank}</td>
-                    <td className="font-semibold text-slate-100">{team.name}</td>
-                    <td>{team.score ?? 0}</td>
-                    <td>{statusLabel}</td>
-                    <td>
-                      {(() => {
-                        const removeKey = `board-${team.id}-remove`;
-                        const removeBusy = actionBusy[removeKey];
-                        return (
-                          <button
-                            className="button-danger text-xs"
-                            onClick={() => handleRemoveTeam(team.id, removeKey)}
-                            disabled={removeBusy}
-                          >
-                            {removeBusy ? "Syncing..." : "Remove Team"}
-                          </button>
-                        );
-                      })()}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      </>
-      )}
-      {adminTab === "round2" && round2TabUnlocked && round2Round && (
-        <>
           <div className="card admin-section space-y-4">
             <div>
-              <p className="label">Round 2 Control</p>
-              <h2 className="text-2xl font-semibold">Start / End Round 2</h2>
+              <p className="label">Live logs</p>
+              <h2 className="text-2xl font-semibold">Team Activity Feed</h2>
               <p className="text-sm text-slate-300">
-                Start Round 2 to unlock the keypad phase for teams. End it when the phase is complete.
+                Monitor team interactions in real-time categorized by recent events.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-3 text-sm text-slate-300">
-              <span>Status: {round2Round.status}</span>
-              <span>Time left: {formatTime(getLiveRemaining(round2Round))}</span>
-            </div>
-            <div className="admin-action-grid">
-              {(() => {
-                const busyKey = "round2-toggle";
-                const busy = actionBusy[busyKey];
-                const isActive = round2Round.status === "active";
+            <div className="space-y-2 max-h-72 overflow-auto">
+              {groupedTeamLogs.length === 0 && (
+                <p className="text-sm text-slate-400">No events caught by interceptors...</p>
+              )}
+              {groupedTeamLogs.map((group) => {
+                const expanded = Boolean(expandedTeamLogs[group.teamId]);
+                const latest = group.events[0];
                 return (
-                  <button
-                    className={`admin-action-button ${isActive ? "button-danger" : "button-success"}`}
-                    onClick={() =>
-                      handleRoundAction(isActive ? "end" : "start", 2, undefined, busyKey)
-                    }
-                    disabled={busy}
-                  >
-                    {busy ? "Syncing..." : isActive ? "End Round 2" : "Start Round 2"}
-                  </button>
+                  <div key={group.teamId} className="rounded-xl border border-slate-700/40 bg-slate-900/60 p-3">
+                    <button
+                      type="button"
+                      className="w-full text-left"
+                      onClick={() =>
+                        setExpandedTeamLogs((prev) => ({
+                          ...prev,
+                          [group.teamId]: !expanded,
+                        }))
+                      }
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-100">{group.teamName}</p>
+                        <p className="text-xs text-slate-400">
+                          {group.events.length} event{group.events.length !== 1 ? "s" : ""}
+                        </p>
+                      </div>
+                      {latest && (
+                        <p className="text-xs text-slate-400 mt-1">
+                          Latest: {new Date(latest.created_at).toLocaleTimeString()} - {latest.message}
+                        </p>
+                      )}
+                    </button>
+
+                    {expanded && (
+                      <div className="mt-3 space-y-2">
+                        {group.events.map((event) => (
+                          <div key={event.id} className="rounded-lg border border-slate-700/40 bg-slate-950/60 p-2 text-xs">
+                            <span className="text-cyan-400">[{new Date(event.created_at).toLocaleTimeString()}]</span> {event.message}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 );
-              })()}
+              })}
             </div>
           </div>
 
-          <PairBattleBoard 
-            roundId={round2Round.id} 
-            onStatusChange={setStatusMessage} 
-            getAdminHeaders={getAdminHeaders}
-          />
-        </>
-      )}
-      {adminTab === "round2" && (!round2TabUnlocked || !round2Round) && (
-        <div className="card admin-section space-y-2">
-          <p className="label">Round 2 Control Center</p>
-          <h2 className="text-2xl font-semibold">Pair Battle Locked</h2>
-          <p className="text-sm text-slate-300">
-            {!round2TabUnlocked
-              ? "Apply Round 1 elimination first to unlock Pair Battle setup."
-              : "Round 2 record missing. Create Round 2 in round control first."}
-          </p>
-        </div>
-      )}
+          <div className="card admin-section space-y-4">
+            <div>
+              <p className="label">Tournament Board</p>
+              <h2 className="text-2xl font-semibold">Selection Pool</h2>
+              <p className="text-sm text-slate-300">
+                Ranked team standings based on Mission Score.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="leaderboard-table">
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Team</th>
+                    <th>Score</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eliminationRows.map((team, index) => (
+                    <tr key={team.id}>
+                      <td className="w-16">{index + 1}</td>
+                      <td>{team.name}</td>
+                      <td className="w-24">{team.score ?? 0}</td>
+                      <td className="w-32">
+                        <button
+                          className="button-danger text-xs scale-90"
+                          onClick={() => handleRemoveTeam(team.id, `remove-${team.id}`)}
+                          disabled={actionBusy[`remove-${team.id}`]}
+                        >
+                          {actionBusy[`remove-${team.id}`] ? "Removing..." : "Remove"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div className="card">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {[

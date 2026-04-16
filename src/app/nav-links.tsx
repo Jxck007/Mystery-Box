@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { isTestModeEnabled } from "@/lib/test-mode";
 import { playSound } from "@/lib/sound-manager";
 
 type NavLinkButtonProps = {
@@ -13,10 +12,6 @@ type NavLinkButtonProps = {
 };
 
 async function canAccessProtectedRoute(target: string) {
-  if (isTestModeEnabled()) {
-    return { allowed: true as const };
-  }
-
   const { data } = await supabaseBrowser.auth.getSession();
   if (!data.session) {
     return { allowed: false as const, redirect: `/auth?redirect=${encodeURIComponent(target)}` };
@@ -63,12 +58,6 @@ export function HeaderNavLinks() {
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    if (isTestModeEnabled()) {
-      setIsAuthed(true);
-      setAuthChecked(true);
-      return;
-    }
-
     let active = true;
     supabaseBrowser.auth.getSession().then(({ data }) => {
       if (active) {

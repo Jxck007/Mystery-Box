@@ -7,6 +7,7 @@ import {
   getBattleColor,
   ROUND2_PAIR_COUNT,
   ROUND2_QUALIFIED_TEAM_LIMIT,
+  ROUND1_SURVIVOR_LIMIT,
 } from "@/lib/pair-battle";
 
 interface QualifiedTeam {
@@ -60,6 +61,9 @@ interface PairBattleBoardProps {
   roundId: string;
   onStatusChange?: (message: string) => void;
   getAdminHeaders: () => Promise<Record<string, string> | null>;
+  onRoundAction?: (action: "start" | "end", roundNumber: number, teamId?: string, busyKey?: string) => Promise<void>;
+  roundStatus?: string;
+  actionBusy?: Record<string, boolean>;
 }
 
 const formatElapsed = (seconds: number | null | undefined) => {
@@ -75,6 +79,9 @@ export function PairBattleBoard({
   roundId,
   onStatusChange,
   getAdminHeaders,
+  onRoundAction,
+  roundStatus = "waiting",
+  actionBusy = {},
 }: PairBattleBoardProps) {
   const [qualifiedTeams, setQualifiedTeams] = useState<QualifiedTeam[]>([]);
   const [pairings, setPairings] = useState<PairPairing[]>([]);
@@ -150,6 +157,50 @@ export function PairBattleBoard({
     setPairingStarted(nextPairings.some((pairing) => pairing.status === "in_progress"));
   }, [getAdminHeaders, masterColorCodes, roundId]);
 
+  const autoPair = useCallback(async () => {
+    const orderedTeams = [...qualifiedTeams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    const orderedPairs = [...draftPairings].sort((a, b) => {
+      const aNum = a.pair_number ?? 999;
+      const bNum = b.pair_number ?? 999;
+      if (aNum !== bNum) return aNum - bNum;
+      return a.created_at && b.created_at ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime() : 0;
+    });
+    if (orderedPairs.length === 0 || orderedTeams.length === 0) {
+      onStatusChange?.("Reviewing pool for seeding...");
+      return;
+    }
+    // Tournament seeding: 1 vs 24, 2 vs 23, 3 vs 22, etc. (works for any even number)
+    const next = orderedPairs.map((pairing) => ({ ...pairing }));
+    const totalTeams = orderedTeams.length;
+    for (let i = 0; i < Math.min(ROUND2_PAIR_COUNT, orderedPairs.length); i += 1) {
+      const pair = next[i];
+      const teamA = orderedTeams[i];
+      const teamB = orderedTeams[totalTeams - 1 - i];
+      pair.team_a_id = teamA?.id ?? null;
+      // Ensure teamB is not same as teamA (for odd team counts)
+      pair.team_b_id = (teamB && teamB.id !== teamA?.id) ? teamB.id : null;
+      pair.status = (pair.team_a_id && pair.team_b_id) ? "ready" : "waiting";
+    }
+
+    setDraftPairings((prev) =>
+      prev.map((pairing) => {
+        const replacement = next.find((entry) => entry.id === pairing.id);
+        return replacement ?? pairing;
+      })
+    );
+    setHasDraftChanges(true);
+    onStatusChange?.("Teams seeded (1 vs 24, 2 vs 23...). Review and click Save Pairings.");
+  }, [draftPairings, onStatusChange, qualifiedTeams]);
+
+  useEffect(() => {
+    if (setupDone && qualifiedTeams.length >= ROUND1_SURVIVOR_LIMIT && draftPairings.length >= ROUND2_PAIR_COUNT && !pairingStarted) {
+      const allEmpty = draftPairings.every(p => !p.team_a_id && !p.team_b_id);
+      if (allEmpty) {
+        autoPair();
+      }
+    }
+  }, [setupDone, qualifiedTeams, draftPairings, pairingStarted, autoPair]);
+
   const setupPairings = useCallback(async () => {
     const headers = await getAdminHeaders();
     if (!headers) return;
@@ -172,11 +223,13 @@ export function PairBattleBoard({
 
       const nextPairings = Array.isArray(data.pairings) ? data.pairings : [];
       if (nextPairings.length === 0) {
-        onStatusChange?.("Pair setup completed but no pair rows are available yet. Check selected Round 2 teams.");
+        onStatusChange?.("Pair setup unlocked. Waiting for round rows...");
         return;
       }
 
-      onStatusChange?.("Pair battle setup unlocked.");
+      onStatusChange?.("Pair battle setup unlocked. Auto-seeding Top 24...");
+      // Auto-pair will be triggered by state updates from fetchQualifiedTeams/fetchPairingStatus
+      // but we can force a logic check here or use a useEffect
     } finally {
       setLoading(false);
     }
@@ -623,35 +676,6 @@ export function PairBattleBoard({
     onStatusChange?.("Round 2 ended manually.");
   }, [getAdminHeaders, onStatusChange]);
 
-  const autoPair = useCallback(async () => {
-    const orderedTeams = [...qualifiedTeams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-    const orderedPairs = [...draftPairings].sort((a, b) => {
-      const aNum = a.pair_number ?? 999;
-      const bNum = b.pair_number ?? 999;
-      if (aNum !== bNum) return aNum - bNum;
-      return a.created_at && b.created_at ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime() : 0;
-    });
-    if (orderedPairs.length === 0 || orderedTeams.length === 0) {
-      onStatusChange?.("Setup pairs and qualified teams first");
-      return;
-    }
-    const next = orderedPairs.map((pairing) => ({ ...pairing }));
-    for (let i = 0; i < Math.min(ROUND2_PAIR_COUNT, orderedPairs.length); i += 1) {
-      const pair = next[i];
-      const teamA = orderedTeams[i * 2];
-      const teamB = orderedTeams[i * 2 + 1];
-      pair.team_a_id = teamA?.id ?? null;
-      pair.team_b_id = teamB?.id ?? null;
-      pair.status = pair.team_a_id && pair.team_b_id ? "ready" : "waiting";
-    }
-    setDraftPairings((prev) => prev.map((pairing) => {
-      const replacement = next.find((entry) => entry.id === pairing.id);
-      return replacement ?? pairing;
-    }));
-    setHasDraftChanges(true);
-    onStatusChange?.("Auto pair complete. Review and click Save Pairings.");
-  }, [draftPairings, onStatusChange, qualifiedTeams]);
-
   const unassignedTeams = useMemo(() => {
     const assigned = new Set<string>();
     draftPairings.forEach((pairing) => {
@@ -706,41 +730,63 @@ export function PairBattleBoard({
               </span>
             </div>
             <div className="pair-actions">
-              <button className="button-neutral" onClick={autoPair} disabled={loading}>Auto Pair</button>
-              <button className="button-neutral" onClick={shufflePairings} disabled={loading}>Shuffle</button>
-              <button className="button-neutral" onClick={autoAssignColors} disabled={loading}>Auto Assign Colors</button>
-              <button className="button-neutral" onClick={seedDemoTeams} disabled={loading}>Seed Demo Teams</button>
-              <button className="button-neutral" onClick={savePairings} disabled={loading}>Save Pairings</button>
-              <button className="button-neutral" onClick={autoGenerateCodes} disabled={loading}>Random Generate Codes</button>
-              <button className="button-neutral" onClick={randomGenerateMasterCodes} disabled={loading}>Randomize Master Codes</button>
-              <button className="button-neutral" onClick={resetMasterCodes} disabled={loading}>Reset Master Codes</button>
-              <button className="button-neutral" onClick={saveMasterColorCodes} disabled={loading}>Save Master Codes</button>
-              <button className="button-neutral" onClick={saveAllCodes} disabled={loading}>Save Legacy Pair Codes</button>
-              {!pairingStarted && (
-                <button className="button-action" onClick={startPairingBattle} disabled={loading || unassignedTeams.length > 0}>
-                  {loading ? "Starting..." : "START ROUND 2"}
-                </button>
+              {onRoundAction && (
+                <div className="flex items-center gap-3 bg-slate-900/50 p-2 rounded-lg border border-slate-700/50 shadow-lg">
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mr-2 pl-2">Mission Control</span>
+                  <button
+                    className="admin-action-button button-success scale-110"
+                    onClick={() => {
+                       onRoundAction("start", 2, undefined, "r2-arena-start");
+                    }}
+                    disabled={roundStatus === "active" || roundStatus === "ended" || actionBusy["r2-arena-start"]}
+                  >
+                    {actionBusy["r2-arena-start"] ? "Starting..." : "▶ Start Round 2"}
+                  </button>
+                  <button
+                    className="admin-action-button button-danger scale-110"
+                    onClick={() => onRoundAction("end", 2, undefined, "r2-arena-end")}
+                    disabled={roundStatus !== "active" || actionBusy["r2-arena-end"]}
+                  >
+                    {actionBusy["r2-arena-end"] ? "Ending..." : "⏹ End Round 2"}
+                  </button>
+                </div>
               )}
-              <button className="button-neutral" onClick={resetPairings} disabled={loading}>
-                {loading ? "Resetting..." : "Reset Pairings"}
-              </button>
+
+              <div className="flex flex-wrap gap-2 items-center ml-auto">
+                {!pairingStarted && roundStatus !== "active" && (
+                  <div className="flex gap-2 items-center opacity-70 hover:opacity-100 transition-opacity">
+                    <span className="text-[9px] text-slate-500 uppercase font-bold mr-2">Seeding Tools</span>
+                    <button className="button-neutral text-xs" onClick={autoPair} disabled={loading}>Auto Pair</button>
+                    <button className="button-neutral text-xs" onClick={savePairings} disabled={loading || !hasDraftChanges}>Save Pairings</button>
+                    <button className="button-neutral text-xs" onClick={autoAssignColors} disabled={loading}>Auto Colors</button>
+                    <button className="button-neutral text-xs" onClick={saveMasterColorCodes} disabled={loading}>Save Codes</button>
+                    <button className="button-neutral text-xs" onClick={resetPairings} disabled={loading}>Reset Board</button>
+                  </div>
+                )}
+                {pairingStarted && (
+                  <button className="button-danger text-xs" onClick={() => void endRoundManually()} disabled={loading}>
+                    Emergency Stop
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
           <div className="pair-board-layout">
             <section className="team-pool-section">
-              <h4>Qualified Teams ({unassignedTeams.length} unassigned)</h4>
+              <h4>Round 1 Top 24 Pool ({unassignedTeams.length} unassigned)</h4>
               <div className="team-pool">
-                {unassignedTeams.map((team) => (
+                {unassignedTeams.map((team, index) => (
                   <button
                     key={team.id}
                     type="button"
                     className="team-chip"
+                    data-rank-group={index < 24 ? "top24" : "other"}
                     draggable
                     onDragStart={() => setDraggedTeam({ teamId: team.id })}
-                    title={team.leader_name}
+                    title={`#${index + 1} - ${team.leader_name}`}
                   >
-                    <div className="team-chip-name">{team.name}</div>
+                    <div className="team-chip-name">#{index + 1} {team.name}</div>
                     <div className="team-chip-score">SCORE {team.score}</div>
                   </button>
                 ))}
@@ -1044,9 +1090,11 @@ export function PairBattleBoard({
         .team-pool-section { background: rgba(16, 20, 36, 0.76); border: 1px solid rgba(127, 173, 211, 0.2); border-radius: 0.5rem; padding: 0.9rem; }
         .team-pool-section h4 { margin: 0 0 0.75rem; color: #dff3ff; font-size: 0.9rem; }
         .team-pool { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-        .team-chip { background: linear-gradient(135deg, #59d9ff 0%, #29b9f7 100%); color: #071a23; border-radius: 0.35rem; padding: 0.5rem; border: none; min-width: 110px; cursor: grab; text-align: left; }
-        .team-chip-name { font-weight: 800; font-size: 0.78rem; }
-        .team-chip-score { font-size: 0.7rem; opacity: 0.75; margin-top: 0.15rem; }
+        .team-chip { background: #334158; color: #ecf7ff; border-radius: 0.35rem; padding: 0.5rem; border: 1px solid rgba(255,255,255,0.1); min-width: 110px; cursor: grab; text-align: left; transition: all 0.2s; }
+        .team-chip[data-rank-group="top24"] { background: linear-gradient(135deg, #34d399 0%, #059669 100%); color: #062016; border-color: rgba(52, 211, 153, 0.4); }
+        .team-chip[data-rank-group="other"] { background: linear-gradient(135deg, #f87171 0%, #b91c1c 100%); color: #3b0707; border-color: rgba(248, 113, 113, 0.4); }
+        .team-chip-name { font-weight: 800; font-size: 0.78rem; text-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .team-chip-score { font-size: 0.7rem; opacity: 0.85; margin-top: 0.15rem; font-family: var(--font-mono); }
         .no-teams { color: #6c809e; font-size: 0.8rem; padding: 0.45rem 0; }
         .pairs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.85rem; }
         .pair-container { border: 1px solid rgba(100, 161, 220, 0.26); background: linear-gradient(180deg, rgba(14, 18, 31, 0.95), rgba(11, 15, 25, 0.95)); border-radius: 0.6rem; padding: 0.75rem; box-shadow: inset 0 0 16px rgba(38, 69, 114, 0.2); }

@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { isTestModeEnabled } from "@/lib/test-mode";
 import { playSound } from "@/lib/sound-manager";
 
 export default function CreateTeamPage() {
@@ -23,14 +22,6 @@ export default function CreateTeamPage() {
 
   useEffect(() => {
     const check = async () => {
-      if (isTestModeEnabled()) {
-        if (!authEntrySoundPlayedRef.current) {
-          authEntrySoundPlayedRef.current = true;
-          playSound("auth_success");
-        }
-        setCheckingAuth(false);
-        return;
-      }
       const { data } = await supabaseBrowser.auth.getSession();
       if (!data.session) {
         router.replace("/auth?redirect=/create-team");
@@ -73,16 +64,6 @@ export default function CreateTeamPage() {
     playSound("button_press");
     setError("");
     setLoading(true);
-
-    if (isTestModeEnabled()) {
-      localStorage.setItem("team_id", "test-team");
-      localStorage.setItem("player_name", leaderName || "TEST_OPERATOR");
-      localStorage.setItem("is_leader", "true");
-      playSound("team_created");
-      setLoading(false);
-      router.push("/team");
-      return;
-    }
 
     const { data } = await supabaseBrowser.auth.getSession();
     if (!data.session) {

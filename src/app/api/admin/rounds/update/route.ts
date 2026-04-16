@@ -26,11 +26,30 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient();
   const GLOBAL_START_ROUNDS = new Set([3]);
 
-  const { data: round, error: roundError } = await supabase
+  const { data: roundFound, error: roundError } = await supabase
     .from("rounds")
     .select("*")
     .eq("round_number", Number(roundNumber))
     .maybeSingle();
+
+  let round = roundFound;
+  if (!round && action === "start" && Number(roundNumber) === 1) {
+    const { data: created, error: createError } = await supabase
+      .from("rounds")
+      .insert({
+        round_number: 1,
+        title: "Round 1",
+        status: "waiting",
+        duration_seconds: 180,
+        elapsed_seconds: 0,
+      })
+      .select()
+      .single();
+    if (createError) {
+      return NextResponse.json({ error: createError.message }, { status: 500 });
+    }
+    round = created;
+  }
 
   if (roundError || !round) {
     return NextResponse.json(
@@ -182,9 +201,7 @@ export async function POST(request: NextRequest) {
 
     const payload: Record<string, unknown> = {
       status: "active",
-      started_at: GLOBAL_START_ROUNDS.has(round.round_number ?? 0)
-        ? new Date().toISOString()
-        : null,
+      started_at: new Date().toISOString(),
       elapsed_seconds: 0,
       paused_at: null,
       ended_by: null,
@@ -216,13 +233,30 @@ export async function POST(request: NextRequest) {
         .eq("is_active", true);
     }
 
-    const { data: allTeams } = await supabase.from("teams").select("id");
+    const { data: allTeams } = await supabase.from("teams").select("id").eq("is_active", true);
     if (allTeams && allTeams.length > 0) {
+      // Bulk insert team_rounds for everyone to ensure they can all start immediately
+      const teamRoundInserts = allTeams.map((team) => ({
+        team_id: team.id,
+        round_id: round.id,
+        boxes_opened: 0,
+        score_this_round: 0,
+        status: "active",
+        started_at: new Date().toISOString(),
+        elapsed_seconds: 0,
+      }));
+
+      // Delete any existing stale records for this round/team combination first to be safe
+      await supabase.from("team_rounds").delete().eq("round_id", round.id).in("team_id", allTeams.map(t => t.id));
+      
+      const { error: batchError } = await supabase.from("team_rounds").insert(teamRoundInserts);
+      if (batchError) console.error("Batch team_rounds error:", batchError);
+
       await supabase.from("team_events").insert(
         allTeams.map((team) => ({
           team_id: team.id,
           event_type: "round",
-          message: `Round ${round.round_number} started for all teams.`,
+          message: `Round ${round.round_number} started for all teams. Mission Clock: 180s.`,
         })),
       );
     }
@@ -320,18 +354,13 @@ export async function POST(request: NextRequest) {
       }
 
       if (!existingRound2) {
-        const fallbackDuration =
-          typeof round.duration_seconds === "number" && round.duration_seconds > 0
-            ? round.duration_seconds
-            : 300;
-
         const { error: createRound2Error } = await supabase
           .from("rounds")
           .insert({
             round_number: 2,
             title: "Round 2",
             status: "waiting",
-            duration_seconds: fallbackDuration,
+            duration_seconds: 180,
             elapsed_seconds: 0,
           });
 

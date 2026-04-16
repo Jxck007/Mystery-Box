@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { GAME_CONFIGS, getMiniGameConfig, MiniGameRenderer } from "@/app/team/game-panels";
-import { isTestModeEnabled } from "@/lib/test-mode";
 import { playSound } from "@/lib/sound-manager";
 
 type GameRecord = {
@@ -52,7 +51,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
   const answeredRef = useRef(false);
   const streakRef = useRef(0);
   const leavePenaltyRef = useRef(false);
-  const testMode = isTestModeEnabled();
+
 
   const progressStorageKey = useMemo(() => {
     if (!teamId || !boxId) return null;
@@ -63,6 +62,14 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
     if (!progressStorageKey) return;
     localStorage.removeItem(progressStorageKey);
   };
+
+  const formatTime = useCallback((seconds: number | null | undefined) => {
+    if (seconds === null || seconds === undefined) return "--:--";
+    const safe = Math.max(0, Math.floor(seconds));
+    const minutes = Math.floor(safe / 60);
+    const secs = safe % 60;
+    return `${minutes}:${secs.toString().padStart(2, "0")}`;
+  }, []);
 
   const restoreProgressSnapshot = (openId?: string | null, gameId?: string | null) => {
     if (!progressStorageKey || !openId || !gameId) return false;
@@ -101,10 +108,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
       return false;
     }
   };
-  const inferredTestConfig = useMemo(() => {
-    const match = GAME_CONFIGS.find((config) => boxId.includes(config.key));
-    return match ?? GAME_CONFIGS[0];
-  }, [boxId]);
+
 
   const totalSeconds = Math.min(round?.duration_seconds ?? GAME_CAP_SECONDS, GAME_CAP_SECONDS);
   const safeTimeLeft = timeLeft ?? totalSeconds;
@@ -194,52 +198,14 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
   useEffect(() => {
     const storedTeamId = localStorage.getItem("team_id");
     if (!storedTeamId) {
-      if (testMode) {
-        localStorage.setItem("team_id", "test-team");
-        localStorage.setItem("player_name", "TEST_OPERATOR");
-        localStorage.setItem("is_leader", "true");
-        setTeamId("test-team");
-        return;
-      }
       router.replace("/auth");
       return;
     }
     setTeamId(storedTeamId);
-  }, [router, testMode]);
+  }, [router]);
 
   useEffect(() => {
     if (!teamId) return;
-    if (testMode) {
-      const testOpenId = "test-open";
-      const testGameId = boxId || "test-box";
-      setGame({
-        id: testGameId,
-        game_title: inferredTestConfig.title,
-        game_description: "Test mode challenge prompt.",
-        game_type: inferredTestConfig.key,
-        points_value: 100,
-        round_number: 1,
-      });
-      setRound({
-        status: "active",
-        duration_seconds: GAME_CAP_SECONDS,
-        remaining_seconds: GAME_CAP_SECONDS,
-        round_number: 1,
-      });
-      setOpen({ id: testOpenId, status: "pending" });
-      const restored = restoreProgressSnapshot(testOpenId, testGameId);
-      if (!restored) {
-        setQuestionIndex(0);
-        setCorrectCount(0);
-        setScoreInput(0);
-        setStreakCount(0);
-        setQuestionSeedBase(`${Date.now()}-${Math.random()}`);
-        setFeedback(null);
-        submittedRef.current = false;
-        answeredRef.current = false;
-      }
-      return;
-    }
     const load = async () => {
       const response = await fetch(`/api/boxes?teamId=${teamId}`, {
         cache: "no-store",
@@ -271,7 +237,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
       }
     };
     load();
-  }, [teamId, boxId, testMode, inferredTestConfig.key, inferredTestConfig.title, progressStorageKey]);
+  }, [teamId, boxId, progressStorageKey]);
 
   useEffect(() => {
     if (!progressStorageKey || !open?.id || !game?.id) return;
@@ -310,21 +276,30 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
     answeredRef.current = false;
   }, [questionIndex, round?.status, open?.id, open?.status]);
 
+  const [nowTime, setNowTime] = useState(() => Date.now());
+
   useEffect(() => {
-    if (!round?.duration_seconds) {
-      setTimeLeft(null);
-      return;
-    }
-    const startRemaining = Math.min(round.remaining_seconds ?? round.duration_seconds, GAME_CAP_SECONDS);
-    setTimeLeft(startRemaining);
-    const id = window.setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev === null) return prev;
-        return Math.max(0, prev - 1);
-      });
-    }, 1000);
+    const id = window.setInterval(() => setNowTime(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [round?.duration_seconds, round?.remaining_seconds]);
+  }, []);
+
+  const getLiveRemaining = useCallback(() => {
+    const duration = round?.duration_seconds ?? GAME_CAP_SECONDS;
+    if (!round) return duration;
+    if (round.status === "ended") return 0;
+    if (round.status === "active") {
+      if (!round.started_at) return duration;
+      const startedAt = new Date(round.started_at).getTime();
+      const elapsedLive = Math.floor((nowTime - startedAt) / 1000);
+      return Math.max(0, duration - elapsedLive);
+    }
+    return duration;
+  }, [round, nowTime]);
+
+  useEffect(() => {
+    const remaining = getLiveRemaining();
+    setTimeLeft(remaining);
+  }, [getLiveRemaining]);
 
   useEffect(() => {
     if (timeLeft === null) return;
