@@ -146,15 +146,20 @@ export async function POST(request: NextRequest) {
     .from("mystery_boxes")
     .select("*")
     .eq("round_number", round.round_number)
-    .eq("is_locked", false);
+    .or("is_locked.eq.false,is_locked.is.null");
 
   if (gamesError) {
     return NextResponse.json({ error: gamesError.message }, { status: 500 });
   }
 
-  const availableGames = (roundGames ?? []).filter(
+  let availableGames = (roundGames ?? []).filter(
     (game) => !usedIds.has(game.id),
   );
+
+  if (availableGames.length === 0 && (roundGames ?? []).length > 0) {
+    // Fallback if all games have been played by this team to avoid getting stuck
+    availableGames = roundGames ?? [];
+  }
 
   if (availableGames.length === 0) {
     return NextResponse.json(
