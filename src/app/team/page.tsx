@@ -660,6 +660,21 @@ export default function TeamDashboardPage() {
   const hideDashboard = false;
   const isEliminated = Boolean(team?.eliminated_at);
 
+  useEffect(() => {
+    if (!team) return;
+    if (round?.round_number !== 1 || round.status !== "ended") return;
+
+    const alreadyRedirected = sessionStorage.getItem("round1_dashboard_redirected");
+    if (alreadyRedirected === "1") return;
+
+    sessionStorage.setItem("round1_score", String(team.score ?? 0));
+    sessionStorage.removeItem("dashboard_redirected");
+    sessionStorage.removeItem("leaderboard_sound_played");
+    sessionStorage.removeItem("leaderboard_round2_redirected");
+    sessionStorage.setItem("round1_dashboard_redirected", "1");
+    router.replace("/dashboard");
+  }, [round, router, team]);
+
   return (
     <main
       className="page-shell space-y-6"

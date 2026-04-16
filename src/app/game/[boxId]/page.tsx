@@ -311,17 +311,23 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
     const submitOnTimeout = async () => {
       submittedRef.current = true;
       setSubmitting(true);
-      const { data } = await supabaseBrowser.auth.getSession();
-      if (!data.session) {
-        setError("Please sign in again.");
+
+      let sessionResponse = await supabaseBrowser.auth.getSession();
+      if (!sessionResponse.data.session) {
+        await supabaseBrowser.auth.refreshSession();
+        sessionResponse = await supabaseBrowser.auth.getSession();
+      }
+
+      if (!sessionResponse.data.session) {
         setSubmitting(false);
+        router.replace("/auth?redirect=/team");
         return;
       }
       const response = await fetch("/api/boxes/complete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${data.session.access_token}`,
+          Authorization: `Bearer ${sessionResponse.data.session.access_token}`,
         },
         body: JSON.stringify({
           teamId,
@@ -335,16 +341,17 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
         setSubmitting(false);
         return;
       }
-      clearProgressSnapshot();
       setSubmitting(false);
+      clearProgressSnapshot();
       router.replace("/team");
     };
     submitOnTimeout();
-  }, [timeLeft, teamId, game, correctCount, router]);
+  }, [timeLeft, teamId, game, correctCount, router, scoreInput]);
 
   useEffect(() => {
     if (!teamId) return;
     const penaltyUrl = `/api/teams/${teamId}/penalty`;
+    let hiddenAt: number | null = null;
 
     const dispatchPenalty = (reason: string) => {
       if (leavePenaltyRef.current) return;
@@ -370,18 +377,22 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
         keepalive: true,
         cache: "no-store",
       }).catch(() => null);
-
-      router.replace("/team");
     };
 
     const handleVisibility = () => {
       if (document.visibilityState === "hidden") {
-        dispatchPenalty("visibility_hidden");
+        hiddenAt = Date.now();
+        return;
+      }
+      if (document.visibilityState === "visible" && hiddenAt) {
+        const hiddenDuration = Date.now() - hiddenAt;
+        hiddenAt = null;
+        // Ignore quick focus interruptions to prevent false redirects during play.
+        if (hiddenDuration >= 3000) {
+          dispatchPenalty("visibility_hidden");
+        }
       }
     };
-    const handleBlur = () => dispatchPenalty("window_blur");
-    const handlePageHide = () => dispatchPenalty("pagehide");
-    const handleBeforeUnload = () => dispatchPenalty("beforeunload");
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "PrintScreen") {
         dispatchPenalty("printscreen");
@@ -392,19 +403,13 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
     };
 
     document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("blur", handleBlur);
-    window.addEventListener("pagehide", handlePageHide);
-    window.addEventListener("beforeunload", handleBeforeUnload);
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("blur", handleBlur);
-      window.removeEventListener("pagehide", handlePageHide);
-      window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [teamId, router, progressStorageKey]);
+  }, [teamId, progressStorageKey]);
 
   if (error) {
     return (

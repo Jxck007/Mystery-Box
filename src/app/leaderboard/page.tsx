@@ -46,7 +46,10 @@ export default function LeaderboardPage() {
         return;
       }
 
-      playSound("leaderboard_open");
+      const cameFromDashboard = sessionStorage.getItem("dashboard_redirected") === "1";
+      if (!cameFromDashboard) {
+        playSound("leaderboard_open");
+      }
     };
 
     void run();
@@ -207,7 +210,7 @@ export default function LeaderboardPage() {
                       <p className="font-semibold" style={{ 
                         color: isSelected ? 'var(--accent)' : "#fff", 
                         textDecoration: isEliminated ? "line-through" : "none" 
-                      }}>
+                       }}>
                         {team.name}
                         {isSelected && <span className="ml-2 text-[10px] bg-green-500/20 text-green-400 px-1 rounded">QUALIFIED</span>}
                         {!isSelected && !isEliminated && <span className="ml-2 text-[10px] bg-red-500/20 text-red-400 px-1 rounded">BELOW CUTOFF</span>}
@@ -227,6 +230,21 @@ export default function LeaderboardPage() {
             <p className="text-sm text-slate-300 py-4">No teams yet. Invite others to start solving mystery boxes.</p>
           )}
         </div>
+
+        {entries.length > 0 && (
+          <div className="pt-2 border-t border-[rgba(103,170,255,0.2)]">
+            <p className="label text-[var(--accent)]">ROUND 2 QUALIFIED (TOP 16)</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {entries.slice(0, 16).map((team, idx) => (
+                <div key={`qual-${team.id}`} className="battle-team">
+                  <p className="label text-[var(--accent)]">#{idx + 1}</p>
+                  <p className="font-semibold text-sm text-white">{team.name}</p>
+                  <p className="text-xs text-slate-300">Score: {team.score ?? 0}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
