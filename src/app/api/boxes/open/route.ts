@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     .eq("team_id", teamId)
     .eq("round_id", round.id)
     .eq("status", "pending")
-    .order("opened_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -183,7 +183,6 @@ export async function POST(request: NextRequest) {
       box_id: selectedGame.id,
       team_id: teamId,
       round_id: round.id,
-      opened_at: new Date().toISOString(),
       status: "pending",
     })
     .select()

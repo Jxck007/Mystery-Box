@@ -70,6 +70,17 @@ export async function POST(request: NextRequest) {
 
   const startedAt = new Date().toISOString();
 
+  // Find the pending box_opens record and update its opened_at timestamp
+  const { data: pendingOpen, error: openError } = await supabase
+    .from("box_opens")
+    .update({ opened_at: startedAt })
+    .eq("team_id", teamId)
+    .eq("round_id", roundId)
+    .eq("status", "pending")
+    .is("opened_at", null)
+    .select()
+    .maybeSingle();
+
   if (teamRound) {
     const { data: updated, error: updateError } = await supabase
       .from("team_rounds")

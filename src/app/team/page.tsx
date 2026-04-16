@@ -95,11 +95,11 @@ export default function TeamDashboardPage() {
   const redirectingRef = useRef(false);
 
   useEffect(() => {
-    if (round?.round_number === 1 && round?.status === "active" && boxes.length > 0 && !redirectingRef.current) {
+    if (round?.round_number === 1 && round?.status === "active" && currentOpen && currentOpen.opened_at && boxes.length > 0 && !redirectingRef.current) {
       redirectingRef.current = true;
       router.push(`/game/${boxes[0].id}`);
     }
-  }, [round?.status, round?.round_number, boxes, router]);
+  }, [round?.status, round?.round_number, currentOpen, boxes, router]);
 
   const [events, setEvents] = useState<TeamEvent[]>([]);
   const [edgeToast, setEdgeToast] = useState<TeamEvent | null>(null);
@@ -315,6 +315,12 @@ export default function TeamDashboardPage() {
 
     setBriefingBusy(false);
     setUnlockFlow("unlocked");
+    
+    // Explicitly update currentOpen's opened_at to allow immediate rendering
+    if (currentOpen && !currentOpen.opened_at) {
+      setCurrentOpen(prev => prev ? { ...prev, opened_at: new Date().toISOString() } : null);
+    }
+    
     const id = encodeURIComponent(revealedGame.id);
     router.push(`/game/${id}`);
   };

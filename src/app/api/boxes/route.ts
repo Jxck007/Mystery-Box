@@ -116,7 +116,7 @@ export async function GET(request: Request) {
       .select("*")
       .eq("team_id", teamId)
       .eq("round_id", activeRoundId)
-      .order("opened_at", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
