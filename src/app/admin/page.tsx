@@ -299,48 +299,6 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleScoreAction = async (
-    teamId: string,
-    action: "add" | "deduct" | "reset",
-    amount = 1,
-    busyKey?: string,
-  ) => {
-    if (busyKey) {
-      setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
-      setStatusMessage("Syncing command...");
-    }
-    const payload: Record<string, unknown> = { teamId, action };
-    if (action !== "reset") {
-      payload.amount = Math.max(0, Math.floor(amount));
-    }
-
-    const adminHeaders = await getAdminHeaders();
-
-    const response = await fetch("/api/admin/scores/update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(adminHeaders ?? {}) },
-      body: JSON.stringify(payload),
-    });
-
-    if (handleAdminAuthResponse(response)) {
-      return;
-    }
-
-    const data = await response.json();
-    if (!response.ok) {
-      setStatusMessage(data.error ?? "Unable to adjust score.");
-      if (busyKey) {
-        setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
-      }
-      return;
-    }
-
-    setStatusMessage("Score updated.");
-    await refreshAll();
-    if (busyKey) {
-      setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
-    }
-  };
 
   const handleRemoveTeam = async (teamId: string, busyKey?: string) => {
     if (busyKey) {
@@ -364,42 +322,31 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleRestoreTeam = async (
-    teamId: string,
-    action: "restore_snapshot" | "restore_time",
-    busyKey?: string,
-  ) => {
-    if (busyKey) {
-      setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
-      setStatusMessage("Syncing command...");
-    }
-    const adminHeaders = await getAdminHeaders();
 
-    const response = await fetch("/api/admin/teams/restore", {
+  const handleLoadDemoData = async (busyKey: string) => {
+    setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
+    setStatusMessage("Seeding demo teams for admin testing...");
+
+    const adminHeaders = await getAdminHeaders();
+    const response = await fetch("/api/admin/pair-battle/demo-seed", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(adminHeaders ?? {}) },
-      body: JSON.stringify({ teamId, action }),
+      headers: adminHeaders ?? undefined,
     });
+
     if (handleAdminAuthResponse(response)) {
       return;
     }
+
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      setStatusMessage(data.error ?? "Unable to restore team.");
-      if (busyKey) {
-        setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
-      }
+      setStatusMessage(data.error ?? "Unable to seed demo data.");
+      setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
       return;
     }
-    setStatusMessage(
-      action === "restore_snapshot"
-        ? "Restored snapshot and score."
-        : "Restored remaining time with score reset.",
-    );
+
+    setStatusMessage(data.message ?? "Demo teams seeded for round panel testing.");
     await refreshAll();
-    if (busyKey) {
-      setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
-    }
+    setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
   };
 
   const handleApplyElimination = async (
@@ -437,6 +384,10 @@ export default function AdminDashboardPage() {
         ? `Round 1 elimination applied. Top ${ROUND1_SURVIVOR_LIMIT} remain active.`
         : `Round 2 elimination applied. First ${ROUND2_QUALIFY_LIMIT} solved teams qualified.`,
     );
+    if (roundNumber === 1) {
+      setAdminTab("round2");
+      setSelectedRoundNumber(2);
+    }
     await refreshAll();
     setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
   };
@@ -470,6 +421,21 @@ export default function AdminDashboardPage() {
     });
   }, [teams]);
 
+  const sortedActiveTeamsByScore = useMemo(() => {
+    return [...teams]
+      .filter((team) => team.is_active !== false)
+      .sort((a, b) => {
+        const scoreDiff = (b.score ?? 0) - (a.score ?? 0);
+        if (scoreDiff !== 0) return scoreDiff;
+        return (a.name ?? "").localeCompare(b.name ?? "");
+      });
+  }, [teams]);
+
+  const projectedRound1SelectedIds = useMemo(() => {
+    const cut = Math.min(sortedActiveTeamsByScore.length, ROUND1_SURVIVOR_LIMIT);
+    return new Set(sortedActiveTeamsByScore.slice(0, cut).map((team) => team.id));
+  }, [sortedActiveTeamsByScore]);
+
   const groupedTeamLogs = useMemo(() => {
     const grouped = new Map<string, { teamName: string; events: TeamEventLog[] }>();
     eventLogs.forEach((event) => {
@@ -498,10 +464,11 @@ export default function AdminDashboardPage() {
 
   const eliminationSummary = useMemo(() => {
     const totalTeams = sortedTeamsByScore.length;
-    const round1Cut = Math.min(totalTeams, ROUND1_SURVIVOR_LIMIT);
+    const activeTeams = sortedActiveTeamsByScore.length;
+    const round1Cut = Math.min(activeTeams, ROUND1_SURVIVOR_LIMIT);
     const round2Cut = Math.min(round1Cut, ROUND2_QUALIFY_LIMIT);
-    return { totalTeams, round1Cut, round2Cut };
-  }, [sortedTeamsByScore]);
+    return { totalTeams, activeTeams, round1Cut, round2Cut };
+  }, [sortedTeamsByScore, sortedActiveTeamsByScore]);
 
   const round2SolvedCount = useMemo(() => {
     return teams.filter((team) => Boolean(team.round2_solved_at)).length;
@@ -523,6 +490,20 @@ export default function AdminDashboardPage() {
   const eliminationStage = useMemo(() => {
     return latestAutoEndedRound?.round_number ?? 0;
   }, [latestAutoEndedRound]);
+
+  const round2TabUnlocked = useMemo(() => {
+    const round1Ended = rounds.some((round) => (round.round_number ?? 0) === 1 && round.status === "ended");
+    if (round1Ended) return true;
+    if (eliminationStage >= 1) return true;
+    const activeTeamCount = teams.filter((team) => team.is_active !== false).length;
+    if (activeTeamCount > 0 && activeTeamCount <= ROUND1_SURVIVOR_LIMIT) return true;
+    return teams.some(
+      (team) =>
+        team.eliminated_round === 1 ||
+        team.round2_status === "pending" ||
+        team.round2_status === "qualified",
+    );
+  }, [eliminationStage, rounds, teams]);
 
   const activeRoundNumber = useMemo(() => {
     const activeRound = rounds.find((round) => round.status === "active");
@@ -565,6 +546,10 @@ export default function AdminDashboardPage() {
     );
   }, [rounds, selectedRoundNumber, activeRoundNumber]);
 
+  const round2Round = useMemo(() => {
+    return rounds.find((round) => (round.round_number ?? 0) === 2) ?? null;
+  }, [rounds]);
+
   const isSelectedRoundAvailable = useMemo(() => {
     if (!selectedRound?.round_number) return false;
     return availableRounds.includes(selectedRound.round_number);
@@ -576,6 +561,12 @@ export default function AdminDashboardPage() {
       setSelectedRoundNumber(availableRounds[0]);
     }
   }, [availableRounds, selectedRoundNumber]);
+
+  useEffect(() => {
+    if (adminTab === "round2" && !round2TabUnlocked) {
+      setAdminTab("round1");
+    }
+  }, [adminTab, round2TabUnlocked]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -666,12 +657,22 @@ export default function AdminDashboardPage() {
                 type="button"
                 className={`button-neutral text-xs ${adminTab === "round2" ? "ring-2 ring-cyan-400" : ""}`}
                 onClick={() => setAdminTab("round2")}
+                disabled={!round2TabUnlocked}
               >
                 Round 2
               </button>
+              {!round2TabUnlocked && (
+                <span className="label text-[var(--text-muted)]">Unlocks after Round 1 cut</span>
+              )}
             </div>
           </div>
 
+          <div className="min-h-6" aria-live="polite">
+            {statusMessage && <p className="text-sm text-sky-300">{statusMessage}</p>}
+          </div>
+
+          {adminTab === "round1" && (
+            <>
           <div className="card admin-section space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -683,12 +684,6 @@ export default function AdminDashboardPage() {
             </p>
           </div>
         </div>
-        <div className="min-h-6" aria-live="polite">
-          {statusMessage && (
-            <p className="text-sm text-sky-300">{statusMessage}</p>
-          )}
-        </div>
-
         <div className="flex flex-wrap gap-2">
           {rounds.filter((round) => (round.round_number ?? 0) === 1).map((round) => {
             const roundNumber = round.round_number ?? 0;
@@ -758,6 +753,54 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         )}
+
+        {selectedRound?.round_number === 1 && (
+          <div className="rounded-2xl border border-emerald-500/30 p-4 bg-emerald-950/20 shadow-sm max-w-2xl">
+            <p className="text-xs uppercase tracking-wide text-emerald-300">Round 1 Bulk Start</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-100">Start All Teams At Once</h3>
+            <p className="mt-1 text-sm text-slate-300">
+              Starts Round 1 for every team in one command from the admin panel.
+            </p>
+            <div className="mt-3">
+              {(() => {
+                const busyKey = "round1-start-all";
+                const busy = actionBusy[busyKey];
+                return (
+                  <button
+                    className="admin-action-button button-success"
+                    onClick={() => handleRoundAction("start", 1, undefined, busyKey)}
+                    disabled={busy}
+                  >
+                    {busy ? "Syncing..." : "Start All Teams"}
+                  </button>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-2xl border border-cyan-500/30 p-4 bg-cyan-950/20 shadow-sm max-w-2xl">
+          <p className="text-xs uppercase tracking-wide text-cyan-300">Demo Mode</p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-100">Load Demo Data For Round Admin Testing</h3>
+          <p className="mt-1 text-sm text-slate-300">
+            Seeds up to 16 demo teams so you can test round start, score flow, and elimination behavior quickly.
+          </p>
+          <div className="mt-3">
+            {(() => {
+              const busyKey = "demo-seed-round-panel";
+              const busy = actionBusy[busyKey];
+              return (
+                <button
+                  className="admin-action-button button-neutral"
+                  onClick={() => void handleLoadDemoData(busyKey)}
+                  disabled={busy}
+                >
+                  {busy ? "Syncing..." : "Load Demo Teams"}
+                </button>
+              );
+            })()}
+          </div>
+        </div>
 
         <div className="card admin-section space-y-4">
           <div>
@@ -874,54 +917,7 @@ export default function AdminDashboardPage() {
                       )}
                   </td>
                   <td>
-                    <div className="admin-action-grid mb-2">
-                      {(() => {
-                        const addKey = `score-${team.id}-add`;
-                        const addBusy = actionBusy[addKey];
-                        return (
-                          <button
-                            className="admin-action-button button-success"
-                            onClick={() =>
-                              handleScoreAction(team.id, "add", 1, addKey)
-                            }
-                            disabled={addBusy}
-                          >
-                            {addBusy ? "Syncing..." : "+1 Point"}
-                          </button>
-                        );
-                      })()}
-                      {(() => {
-                        const deductKey = `score-${team.id}-deduct`;
-                        const deductBusy = actionBusy[deductKey];
-                        return (
-                          <button
-                            className="admin-action-button button-danger"
-                            onClick={() =>
-                              handleScoreAction(team.id, "deduct", 1, deductKey)
-                            }
-                            disabled={deductBusy}
-                          >
-                            {deductBusy ? "Syncing..." : "-1 Point"}
-                          </button>
-                        );
-                      })()}
-                    </div>
                     <div className="admin-action-grid">
-                      {(() => {
-                        const resetKey = `score-${team.id}-reset`;
-                        const resetBusy = actionBusy[resetKey];
-                        return (
-                          <button
-                            className="admin-action-button button-neutral"
-                            onClick={() =>
-                              handleScoreAction(team.id, "reset", 1, resetKey)
-                            }
-                            disabled={resetBusy}
-                          >
-                            {resetBusy ? "Syncing..." : "Reset Score"}
-                          </button>
-                        );
-                      })()}
                       {(() => {
                         const removeKey = `team-${team.id}-remove`;
                         const removeBusy = actionBusy[removeKey];
@@ -932,78 +928,6 @@ export default function AdminDashboardPage() {
                             disabled={removeBusy}
                           >
                             {removeBusy ? "Syncing..." : "Remove Team"}
-                          </button>
-                        );
-                      })()}
-                    </div>
-                    {activeRoundNumber === 1 && (
-                      <div className="mt-2 admin-action-grid">
-                        {(() => {
-                          const teamRoundKey = `team-${team.id}-round`;
-                          const teamRoundBusy = actionBusy[teamRoundKey];
-                          const action =
-                            team.current_round_status === "paused"
-                              ? "resume_team"
-                              : team.current_round_status === "active"
-                              ? "pause_team"
-                              : "start";
-                          const label =
-                            team.current_round_status === "paused"
-                              ? "Resume Team"
-                              : team.current_round_status === "active"
-                              ? "Suspend Team"
-                              : "Start Team";
-                          const tone =
-                            team.current_round_status === "active"
-                              ? "button-neutral"
-                              : "button-success";
-                          return (
-                            <button
-                              className={`admin-action-button ${tone}`}
-                              onClick={() =>
-                                handleRoundAction(
-                                  action,
-                                  activeRoundNumber,
-                                  team.id,
-                                  teamRoundKey,
-                                )
-                              }
-                              disabled={teamRoundBusy}
-                            >
-                              {teamRoundBusy ? "Syncing..." : label}
-                            </button>
-                          );
-                        })()}
-                      </div>
-                    )}
-                    <div className="mt-2 admin-action-grid">
-                      {(() => {
-                        const restoreKey = `team-${team.id}-restore`;
-                        const restoreBusy = actionBusy[restoreKey];
-                        return (
-                          <button
-                            className="admin-action-button button-success"
-                            onClick={() =>
-                              handleRestoreTeam(team.id, "restore_snapshot", restoreKey)
-                            }
-                            disabled={restoreBusy}
-                          >
-                            {restoreBusy ? "Syncing..." : "Restore Snapshot"}
-                          </button>
-                        );
-                      })()}
-                      {(() => {
-                        const restoreTimeKey = `team-${team.id}-restore-time`;
-                        const restoreTimeBusy = actionBusy[restoreTimeKey];
-                        return (
-                          <button
-                            className="admin-action-button button-neutral"
-                            onClick={() =>
-                              handleRestoreTeam(team.id, "restore_time", restoreTimeKey)
-                            }
-                            disabled={restoreTimeBusy}
-                          >
-                            {restoreTimeBusy ? "Syncing..." : "Restore Time"}
                           </button>
                         );
                       })()}
@@ -1025,7 +949,8 @@ export default function AdminDashboardPage() {
               </p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm text-slate-300">
-          <span>Round 1 cut: Top {eliminationSummary.round1Cut}</span>
+          <span>Active teams: {eliminationSummary.activeTeams}</span>
+          <span>Round 1 cut: Top {eliminationSummary.round1Cut} active teams</span>
               <span>Round 2 cut: First {eliminationSummary.round2Cut} solves</span>
               <span>Round 2 solved: {round2SolvedCount}</span>
               <span>Round 2 qualified: {round2QualifiedCount}</span>
@@ -1067,34 +992,43 @@ export default function AdminDashboardPage() {
             <tbody>
               {sortedTeamsByScore.map((team, index) => {
                 const rank = index + 1;
-                const round1Cut = eliminationSummary.round1Cut;
+                const isActuallyRound1Selected =
+                  team.is_active !== false && team.eliminated_round !== 1;
+                const isProjectedRound1Selected = projectedRound1SelectedIds.has(team.id);
                 let statusLabel = "In play";
                 if (eliminationStage >= 2) {
                   statusLabel =
                     team.round2_status === "qualified"
                       ? "Qualified"
                       : team.round2_solved_at
-                      ? "Eliminated"
+                      ? "Round 2 Out"
                       : team.eliminated_round === 1
-                      ? "Eliminated"
-                      : rank <= round1Cut
-                      ? "Playoff"
-                      : "Eliminated";
+                      ? "Not Selected"
+                      : isActuallyRound1Selected
+                      ? "Selected"
+                      : team.eliminated_round === 1
+                      ? "Not Selected"
+                      : "Round 2 Out";
                 } else if (eliminationStage >= 1) {
-                  statusLabel =
-                    rank <= round1Cut
-                      ? "Playoff"
-                      : "Eliminated";
+                  statusLabel = isActuallyRound1Selected ? "Selected" : "Not Selected";
+                } else {
+                  statusLabel = isProjectedRound1Selected ? "Projected Selected" : "Projected Out";
                 }
                 const rowClass =
                   statusLabel === "Winner"
                     ? "bg-emerald-500/10"
                     : statusLabel === "Qualified"
                     ? "bg-sky-500/10"
-                    : statusLabel === "Playoff"
-                    ? "bg-amber-500/10"
-                    : statusLabel === "Eliminated"
-                    ? "bg-rose-500/10"
+                    : statusLabel === "Selected"
+                    ? "bg-lime-500/20"
+                    : statusLabel === "Projected Selected"
+                    ? "bg-lime-500/10"
+                    : statusLabel === "Not Selected"
+                    ? "bg-rose-600/20"
+                    : statusLabel === "Projected Out"
+                    ? "bg-rose-600/10"
+                    : statusLabel === "Round 2 Out"
+                    ? "bg-amber-600/15"
                     : "";
 
                 return (
@@ -1125,12 +1059,25 @@ export default function AdminDashboardPage() {
           </table>
         </div>
       </div>
-      {selectedRound && (
+      </>
+      )}
+      {adminTab === "round2" && round2TabUnlocked && round2Round && (
         <PairBattleBoard 
-          roundId={selectedRound.id} 
+          roundId={round2Round.id} 
           onStatusChange={setStatusMessage} 
           getAdminHeaders={getAdminHeaders}
         />
+      )}
+      {adminTab === "round2" && (!round2TabUnlocked || !round2Round) && (
+        <div className="card admin-section space-y-2">
+          <p className="label">Round 2 Control Center</p>
+          <h2 className="text-2xl font-semibold">Pair Battle Locked</h2>
+          <p className="text-sm text-slate-300">
+            {!round2TabUnlocked
+              ? "Apply Round 1 elimination first to unlock Pair Battle setup."
+              : "Round 2 record missing. Create Round 2 in round control first."}
+          </p>
+        </div>
       )}
           <div className="card">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

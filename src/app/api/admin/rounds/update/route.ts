@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/app/api/admin/_auth";
+import { ROUND1_SURVIVOR_LIMIT } from "@/lib/pair-battle";
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin(request);
@@ -259,7 +260,7 @@ export async function POST(request: NextRequest) {
       }
 
       const totalTeams = rankedTeams?.length ?? 0;
-      const round1Cutoff = Math.max(1, Math.ceil(totalTeams * 0.6));
+      const round1Cutoff = Math.min(ROUND1_SURVIVOR_LIMIT, totalTeams);
       const eliminatedTeams = (rankedTeams ?? []).slice(round1Cutoff);
       const survivingTeams = (rankedTeams ?? []).slice(0, round1Cutoff);
 

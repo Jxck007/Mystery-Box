@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/app/api/admin/_auth";
-import { ROUND1_SURVIVOR_LIMIT } from "@/lib/pair-battle";
+import { ROUND1_SURVIVOR_LIMIT, ROUND2_QUALIFIED_TEAM_LIMIT } from "@/lib/pair-battle";
 
-const ROUND2_QUALIFY_LIMIT = 8;
+const ROUND2_QUALIFY_LIMIT = ROUND2_QUALIFIED_TEAM_LIMIT;
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin(request);
@@ -26,9 +26,10 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
 
-  const { data: teams, error: teamError } = await supabase
+  const { data: activeTeams, error: teamError } = await supabase
     .from("teams")
-    .select("id, name, score")
+    .select("id, name, score, created_at")
+    .eq("is_active", true)
     .order("score", { ascending: false })
     .order("created_at", { ascending: true });
 
@@ -36,8 +37,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: teamError.message }, { status: 500 });
   }
 
-  const survivors = teams?.slice(0, ROUND1_SURVIVOR_LIMIT) ?? [];
-  const eliminated = teams?.slice(ROUND1_SURVIVOR_LIMIT) ?? [];
+  const survivors = activeTeams?.slice(0, ROUND1_SURVIVOR_LIMIT) ?? [];
+  const eliminated = activeTeams?.slice(ROUND1_SURVIVOR_LIMIT) ?? [];
 
   if (survivors.length > 0) {
     const { error: survivorError } = await supabase
@@ -70,6 +71,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: eliminatedError.message }, { status: 500 });
     }
 
+    await Promise.all(
+      eliminated.map((team, index) =>
+        supabase
+          .from("teams")
+          .update({ eliminated_position: ROUND1_SURVIVOR_LIMIT + index + 1 })
+          .eq("id", team.id),
+      ),
+    );
+
     await supabase.from("team_events").insert(
       eliminated.map((team, index) => ({
         team_id: team.id,
@@ -78,6 +88,16 @@ export async function POST(request: NextRequest) {
       })),
     );
   }
+
+  await supabase
+    .from("rounds")
+    .update({
+      status: "ended",
+      ended_at: new Date().toISOString(),
+      ended_by: "admin",
+    })
+    .eq("round_number", 1)
+    .in("status", ["active", "paused", "waiting"]);
 
   return NextResponse.json({
     success: true,

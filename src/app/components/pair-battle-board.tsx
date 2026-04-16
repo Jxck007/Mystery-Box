@@ -89,6 +89,9 @@ export function PairBattleBoard({
   const [masterColorCodes, setMasterColorCodes] = useState<Record<string, string>>(() =>
     Object.fromEntries(BATTLE_COLOR_PALETTE.map((entry) => [entry.name, ""])),
   );
+  const [lockedMasterColors, setLockedMasterColors] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(BATTLE_COLOR_PALETTE.map((entry) => [entry.name, false])),
+  );
   const [allowColorRepeat, setAllowColorRepeat] = useState(false);
   const [codeBusy, setCodeBusy] = useState<Record<string, boolean>>({});
   const [liveBusy, setLiveBusy] = useState<Record<string, boolean>>({});
@@ -97,11 +100,18 @@ export function PairBattleBoard({
     const headers = await getAdminHeaders();
     if (!headers) return;
     const response = await fetch("/api/admin/pair-battle/qualified-teams", { headers });
-    const data = await response.json().catch(() => []);
-    if (response.ok && Array.isArray(data)) {
-      setQualifiedTeams(data);
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      onStatusChange?.((data as { error?: string } | null)?.error ?? "Unable to load selected Round 2 teams.");
+      setQualifiedTeams([]);
+      return;
     }
-  }, [getAdminHeaders]);
+    if (Array.isArray(data)) {
+      setQualifiedTeams(data);
+    } else {
+      setQualifiedTeams([]);
+    }
+  }, [getAdminHeaders, onStatusChange]);
 
   const fetchPairingStatus = useCallback(async () => {
     const headers = await getAdminHeaders();
@@ -331,6 +341,111 @@ export function PairBattleBoard({
     setPairColorDraft(next);
     onStatusChange?.("Color notes auto-assigned. Review and save each pair.");
   }, [draftPairings, onStatusChange]);
+
+  const shufflePairings = useCallback(() => {
+    const orderedPairs = [...draftPairings].sort((a, b) => {
+      const aNum = a.pair_number ?? 999;
+      const bNum = b.pair_number ?? 999;
+      if (aNum !== bNum) return aNum - bNum;
+      return 0;
+    });
+    const teamPool = [...qualifiedTeams].sort(() => Math.random() - 0.5);
+    if (orderedPairs.length === 0 || teamPool.length === 0) {
+      onStatusChange?.("Setup pairs and qualified teams first");
+      return;
+    }
+
+    const next = orderedPairs.map((pairing) => ({ ...pairing }));
+    for (let i = 0; i < Math.min(ROUND2_PAIR_COUNT, orderedPairs.length); i += 1) {
+      const pair = next[i];
+      const teamA = teamPool[i * 2];
+      const teamB = teamPool[i * 2 + 1];
+      pair.team_a_id = teamA?.id ?? null;
+      pair.team_b_id = teamB?.id ?? null;
+      pair.status = pair.team_a_id && pair.team_b_id ? "ready" : "waiting";
+    }
+
+    setDraftPairings((prev) =>
+      prev.map((pairing) => {
+        const replacement = next.find((entry) => entry.id === pairing.id);
+        return replacement ?? pairing;
+      }),
+    );
+    setHasDraftChanges(true);
+    onStatusChange?.("Pairings shuffled. Review and click Save Pairings.");
+  }, [draftPairings, onStatusChange, qualifiedTeams]);
+
+  const randomGenerateMasterCodes = useCallback(() => {
+    setMasterColorCodes((prev) => {
+      const next = { ...prev };
+      BATTLE_COLOR_PALETTE.forEach((entry) => {
+        if (lockedMasterColors[entry.name]) return;
+        next[entry.name] = random4Digits();
+      });
+      return next;
+    });
+    onStatusChange?.("Master color codes randomized (locked colors kept).");
+  }, [lockedMasterColors, onStatusChange]);
+
+  const resetMasterCodes = useCallback(() => {
+    setMasterColorCodes((prev) => {
+      const next = { ...prev };
+      BATTLE_COLOR_PALETTE.forEach((entry) => {
+        if (lockedMasterColors[entry.name]) return;
+        next[entry.name] = "";
+      });
+      return next;
+    });
+    onStatusChange?.("Master color codes reset (locked colors kept).");
+  }, [lockedMasterColors, onStatusChange]);
+
+  const postPairAction = useCallback(async (
+    pairingId: string,
+    action: "force_winner" | "simulate_attempt" | "replay_pair",
+    payload: Record<string, unknown> = {},
+  ) => {
+    const headers = await getAdminHeaders();
+    if (!headers) return false;
+    setLiveBusy((prev) => ({ ...prev, [`${action}-${pairingId}`]: true }));
+    const response = await fetch("/api/admin/pair-battle/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({ roundId, pairingId, action, ...payload }),
+    });
+    const data = await response.json().catch(() => ({}));
+    setLiveBusy((prev) => ({ ...prev, [`${action}-${pairingId}`]: false }));
+    if (!response.ok) {
+      onStatusChange?.(data.error ?? "Unable to run pair action");
+      return false;
+    }
+    onStatusChange?.(data.message ?? "Pair action complete");
+    await fetchPairingStatus();
+    return true;
+  }, [fetchPairingStatus, getAdminHeaders, onStatusChange, roundId]);
+
+  const forceWinner = useCallback(async (pairing: PairPairing, winnerTeamId: string | null) => {
+    if (!winnerTeamId) {
+      onStatusChange?.("Select a valid winner team first.");
+      return;
+    }
+    await postPairAction(pairing.id, "force_winner", { winnerTeamId, codeAttempt: "FORCED" });
+  }, [onStatusChange, postPairAction]);
+
+  const simulateAttempt = useCallback(async (pairing: PairPairing, teamId: string | null, isCorrect: boolean) => {
+    if (!teamId) {
+      onStatusChange?.("Select a valid team for simulation.");
+      return;
+    }
+    await postPairAction(pairing.id, "simulate_attempt", {
+      teamId,
+      isCorrect,
+      codeAttempt: isCorrect ? (teamId === pairing.team_a_id ? (pairing.team_a_code ?? random4Digits()) : (pairing.team_b_code ?? random4Digits())) : random4Digits(),
+    });
+  }, [onStatusChange, postPairAction]);
+
+  const replayPair = useCallback(async (pairingId: string) => {
+    await postPairAction(pairingId, "replay_pair");
+  }, [postPairAction]);
 
   const seedDemoTeams = useCallback(async () => {
     const headers = await getAdminHeaders();
@@ -586,10 +701,13 @@ export function PairBattleBoard({
             </div>
             <div className="pair-actions">
               <button className="button-neutral" onClick={autoPair} disabled={loading}>Auto Pair</button>
+              <button className="button-neutral" onClick={shufflePairings} disabled={loading}>Shuffle</button>
               <button className="button-neutral" onClick={autoAssignColors} disabled={loading}>Auto Assign Colors</button>
               <button className="button-neutral" onClick={seedDemoTeams} disabled={loading}>Seed Demo Teams</button>
               <button className="button-neutral" onClick={savePairings} disabled={loading}>Save Pairings</button>
               <button className="button-neutral" onClick={autoGenerateCodes} disabled={loading}>Random Generate Codes</button>
+              <button className="button-neutral" onClick={randomGenerateMasterCodes} disabled={loading}>Randomize Master Codes</button>
+              <button className="button-neutral" onClick={resetMasterCodes} disabled={loading}>Reset Master Codes</button>
               <button className="button-neutral" onClick={saveMasterColorCodes} disabled={loading}>Save Master Codes</button>
               <button className="button-neutral" onClick={saveAllCodes} disabled={loading}>Save Legacy Pair Codes</button>
               {!pairingStarted && (
@@ -751,6 +869,41 @@ export function PairBattleBoard({
                       >
                         {liveBusy[`reset-${pairing.id}`] ? "Resetting..." : "Force Reset Pair"}
                       </button>
+                      <button
+                        className="button-neutral"
+                        onClick={() => void replayPair(pairing.id)}
+                        disabled={Boolean(liveBusy[`replay_pair-${pairing.id}`])}
+                      >
+                        {liveBusy[`replay_pair-${pairing.id}`] ? "Syncing..." : "Replay Test"}
+                      </button>
+                      <button
+                        className="button-neutral"
+                        onClick={() => void simulateAttempt(pairing, pairing.team_a_id ?? null, false)}
+                        disabled={Boolean(liveBusy[`simulate_attempt-${pairing.id}`])}
+                      >
+                        Sim A Miss
+                      </button>
+                      <button
+                        className="button-neutral"
+                        onClick={() => void simulateAttempt(pairing, pairing.team_b_id ?? null, false)}
+                        disabled={Boolean(liveBusy[`simulate_attempt-${pairing.id}`])}
+                      >
+                        Sim B Miss
+                      </button>
+                      <button
+                        className="button-neutral"
+                        onClick={() => void forceWinner(pairing, pairing.team_a_id ?? null)}
+                        disabled={Boolean(liveBusy[`force_winner-${pairing.id}`])}
+                      >
+                        Force Winner A
+                      </button>
+                      <button
+                        className="button-neutral"
+                        onClick={() => void forceWinner(pairing, pairing.team_b_id ?? null)}
+                        disabled={Boolean(liveBusy[`force_winner-${pairing.id}`])}
+                      >
+                        Force Winner B
+                      </button>
                     </div>
                   </article>
                 );
@@ -794,11 +947,22 @@ export function PairBattleBoard({
                       className="input-field"
                       placeholder="0000"
                       value={masterColorCodes[entry.name] ?? ""}
+                      disabled={lockedMasterColors[entry.name]}
                       onChange={(event) => {
                         const digits = event.target.value.replace(/\D/g, "").slice(0, 4);
                         setMasterColorCodes((prev) => ({ ...prev, [entry.name]: digits }));
                       }}
                     />
+                    <button
+                      type="button"
+                      className="button-neutral"
+                      style={{ marginTop: "0.5rem", width: "100%" }}
+                      onClick={() => {
+                        setLockedMasterColors((prev) => ({ ...prev, [entry.name]: !prev[entry.name] }));
+                      }}
+                    >
+                      {lockedMasterColors[entry.name] ? "Unlock Code" : "Lock Code"}
+                    </button>
                   </div>
                 );
               })}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/app/api/admin/_auth";
 
-const DEMO_TEAM_TARGET = 16;
+const DEMO_TEAM_TARGET = 24;
 
 const DEMO_TEAM_NAMES = [
   "Team Alpha",

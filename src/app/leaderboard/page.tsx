@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { isTestModeEnabled } from "@/lib/test-mode";
 import { playSound, playSoundAndWait } from "@/lib/sound-manager";
+import { getBattleColor } from "@/lib/pair-battle";
 
 type LeaderboardEntry = {
   id: string;
@@ -258,10 +259,22 @@ export default function LeaderboardPage() {
     return () => window.clearInterval(intervalId);
   }, [fetchLeaderboard]);
 
+  const round2LeaderboardUnlocked = useMemo(() => {
+    if (!round2) return false;
+    if (round2.status === "active") return true;
+    return pairings.some((pair) => pair.status === "in_progress" || pair.status === "completed");
+  }, [pairings, round2]);
+
+  useEffect(() => {
+    if (selectedRoundTab === "round2" && !round2LeaderboardUnlocked) {
+      setSelectedRoundTab("round1");
+    }
+  }, [round2LeaderboardUnlocked, selectedRoundTab]);
+
   const showBattleView = useMemo(() => {
-    const round2Available = Boolean(round2 && ["active", "paused", "ended"].includes(round2.status) && pairings.length > 0);
+    const round2Available = Boolean(round2LeaderboardUnlocked && pairings.length > 0);
     return selectedRoundTab === "round2" && round2Available;
-  }, [pairings.length, round2, selectedRoundTab]);
+  }, [pairings.length, round2LeaderboardUnlocked, selectedRoundTab]);
 
   const hasNoRoundStarted = useMemo(() => {
     if (loading || testMode) return false;
@@ -301,10 +314,13 @@ export default function LeaderboardPage() {
             type="button"
             className={`button-neutral text-xs ${selectedRoundTab === "round2" ? "ring-2 ring-cyan-400" : ""}`}
             onClick={() => setSelectedRoundTab("round2")}
-            disabled={!round2 || pairings.length === 0}
+            disabled={!round2LeaderboardUnlocked}
           >
             Round 2
           </button>
+          {!round2LeaderboardUnlocked && (
+            <span className="label text-(--text-muted)">Round 2 unlocks after it starts</span>
+          )}
         </div>
       </div>
 
@@ -353,6 +369,8 @@ export default function LeaderboardPage() {
               const state = getPairState(pair);
               const aWon = pair.winner_id && pair.team_a_id === pair.winner_id;
               const bWon = pair.winner_id && pair.team_b_id === pair.winner_id;
+              const aColor = pair.team_a_color ? getBattleColor(pair.team_a_color) : null;
+              const bColor = pair.team_b_color ? getBattleColor(pair.team_b_color) : null;
               const label = pair.pair_number ?? index + 1;
               return (
                 <article key={pair.id} className={`battle-card battle-${state}`}>
@@ -362,9 +380,23 @@ export default function LeaderboardPage() {
                   </header>
 
                   <div className="battle-matchup">
-                    <div className={`battle-team ${aWon ? "battle-winner" : bWon ? "battle-loser" : ""}`}>
+                    <div
+                      className={`battle-team ${aWon ? "battle-winner" : bWon ? "battle-loser" : ""}`}
+                      style={{
+                        borderLeft: `4px solid ${aColor?.hex ?? "rgba(106, 140, 188, 0.35)"}`,
+                        background: aColor
+                          ? `linear-gradient(180deg, ${aColor.glow.replace("0.45", "0.2")}, rgba(8, 12, 21, 0.82))`
+                          : undefined,
+                      }}
+                    >
                       <div className="battle-team-name">{pair.team_a?.name ?? "Awaiting Team"}</div>
-                      <div className="battle-team-meta">{pair.team_a_color ?? "Color pending"}</div>
+                      <div className="battle-team-meta">
+                        {pair.team_a_color ? (
+                          <span className="battle-color-chip" style={{ background: aColor?.hex ?? "#4b5563", color: aColor?.text ?? "#fff" }}>
+                            {pair.team_a_color}
+                          </span>
+                        ) : "Color pending"}
+                      </div>
                       <div className="battle-team-meta">Attempts: {pair.team_a_attempts ?? 0}</div>
                       <div className="battle-team-meta">Latest: {pair.team_a_latest_attempt ?? "--"}</div>
                       <div className="battle-team-meta">Code: {pair.team_a_code ?? "----"}</div>
@@ -374,9 +406,23 @@ export default function LeaderboardPage() {
 
                     <div className="battle-vs">VS</div>
 
-                    <div className={`battle-team ${bWon ? "battle-winner" : aWon ? "battle-loser" : ""}`}>
+                    <div
+                      className={`battle-team ${bWon ? "battle-winner" : aWon ? "battle-loser" : ""}`}
+                      style={{
+                        borderLeft: `4px solid ${bColor?.hex ?? "rgba(106, 140, 188, 0.35)"}`,
+                        background: bColor
+                          ? `linear-gradient(180deg, ${bColor.glow.replace("0.45", "0.2")}, rgba(8, 12, 21, 0.82))`
+                          : undefined,
+                      }}
+                    >
                       <div className="battle-team-name">{pair.team_b?.name ?? "Awaiting Team"}</div>
-                      <div className="battle-team-meta">{pair.team_b_color ?? "Color pending"}</div>
+                      <div className="battle-team-meta">
+                        {pair.team_b_color ? (
+                          <span className="battle-color-chip" style={{ background: bColor?.hex ?? "#4b5563", color: bColor?.text ?? "#fff" }}>
+                            {pair.team_b_color}
+                          </span>
+                        ) : "Color pending"}
+                      </div>
                       <div className="battle-team-meta">Attempts: {pair.team_b_attempts ?? 0}</div>
                       <div className="battle-team-meta">Latest: {pair.team_b_latest_attempt ?? "--"}</div>
                       <div className="battle-team-meta">Code: {pair.team_b_code ?? "----"}</div>
@@ -507,6 +553,14 @@ export default function LeaderboardPage() {
           font-size: 0.68rem;
           color: #8da8cb;
           margin-top: 0.15rem;
+        }
+        .battle-color-chip {
+          display: inline-block;
+          border-radius: 999px;
+          padding: 0.12rem 0.5rem;
+          font-size: 0.64rem;
+          font-weight: 700;
+          letter-spacing: 0.06em;
         }
         .battle-vs {
           display: flex;

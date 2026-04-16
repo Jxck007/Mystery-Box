@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { requireUser } from "@/lib/supabase-server";
+import { requireAdmin } from "@/app/api/admin/_auth";
 import { ROUND2_QUALIFIED_TEAM_LIMIT } from "@/lib/pair-battle";
 
 /**
@@ -9,21 +9,17 @@ import { ROUND2_QUALIFIED_TEAM_LIMIT } from "@/lib/pair-battle";
  * Ready to be assigned to pair battle pairings
  */
 export async function GET(request: NextRequest) {
-  const auth = await requireUser(request);
-  if (!auth.user) {
-    return NextResponse.json(
-      { error: auth.error ?? "Unauthorized" },
-      { status: 401 }
-    );
-  }
+  const auth = await requireAdmin(request);
+  if (auth) return auth;
 
   const supabase = createAdminClient();
 
   // Get top teams by score (Round 1 survivors)
   const { data: teams, error } = await supabase
     .from("teams")
-    .select("id, name, leader_name, score, is_active")
+    .select("id, name, leader_name, score, is_active, eliminated_round")
     .eq("is_active", true)
+    .is("eliminated_round", null)
     .order("score", { ascending: false })
     .limit(ROUND2_QUALIFIED_TEAM_LIMIT);
 
