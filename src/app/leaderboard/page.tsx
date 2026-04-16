@@ -9,6 +9,8 @@ type LeaderboardEntry = {
   id: string;
   name: string;
   score: number;
+  correct_count?: number;
+  wrong_count?: number;
   member_count?: number;
   max_members?: number;
 };
@@ -189,6 +191,8 @@ export default function LeaderboardPage() {
                 <th>Rank</th>
                 <th>Team Name</th>
                 <th>Members</th>
+                <th>Correct</th>
+                <th>Wrong</th>
                 <th>Score</th>
               </tr>
             </thead>
@@ -220,6 +224,8 @@ export default function LeaderboardPage() {
                       {team.member_count ?? 0}
                       {team.max_members ? `/${team.max_members}` : ""}
                     </td>
+                    <td>{team.correct_count ?? 0}</td>
+                    <td>{team.wrong_count ?? 0}</td>
                     <td className="font-headline text-2xl font-black">{team.score ?? 0}</td>
                   </tr>
                 );

@@ -209,33 +209,80 @@ export default function TeamDashboardPage() {
   }, [session]);
 
   useEffect(() => {
-    supabaseBrowser.auth.getSession().then(async ({ data }) => {
-      if (!data.session) {
-        router.replace("/auth?redirect=/team");
-        return;
-      }
+    const bootstrapSession = async () => {
+      try {
+        let { data } = await supabaseBrowser.auth.getSession();
+        if (!data.session) {
+          await supabaseBrowser.auth.refreshSession();
+          ({ data } = await supabaseBrowser.auth.getSession());
+        }
 
-      const response = await fetch("/api/players/me", {
-        headers: { Authorization: `Bearer ${data.session.access_token}` },
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.team) {
+        if (!data.session) {
+          router.replace("/auth?redirect=/team");
+          return;
+        }
+
+        let payload: {
+          display_name?: string;
+          team?: { id: string; leader_name?: string };
+        } | null = null;
+
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const response = await fetch("/api/players/me", {
+            headers: { Authorization: `Bearer ${data.session.access_token}` },
+          });
+          payload = await response.json().catch(() => null);
+          if (response.ok && payload?.team?.id) {
+            break;
+          }
+          await wait(300);
+        }
+
+        if (payload?.team?.id && payload.display_name) {
+          localStorage.setItem("team_id", payload.team.id);
+          localStorage.setItem("player_name", payload.display_name);
+          localStorage.setItem(
+            "is_leader",
+            payload.team.leader_name === payload.display_name ? "true" : "false",
+          );
+          setSession({
+            teamId: payload.team.id,
+            playerName: payload.display_name,
+            isLeader: payload.team.leader_name === payload.display_name,
+          });
+          return;
+        }
+
+        const fallbackTeamId = localStorage.getItem("team_id") ?? "";
+        const fallbackPlayerName = localStorage.getItem("player_name") ?? "";
+        const fallbackIsLeader = localStorage.getItem("is_leader") === "true";
+        if (fallbackTeamId && fallbackPlayerName) {
+          setSession({
+            teamId: fallbackTeamId,
+            playerName: fallbackPlayerName,
+            isLeader: fallbackIsLeader,
+          });
+          return;
+        }
+
         router.replace("/create-team");
-        return;
+      } catch {
+        const fallbackTeamId = localStorage.getItem("team_id") ?? "";
+        const fallbackPlayerName = localStorage.getItem("player_name") ?? "";
+        const fallbackIsLeader = localStorage.getItem("is_leader") === "true";
+        if (fallbackTeamId && fallbackPlayerName) {
+          setSession({
+            teamId: fallbackTeamId,
+            playerName: fallbackPlayerName,
+            isLeader: fallbackIsLeader,
+          });
+          return;
+        }
+        router.replace("/create-team");
       }
+    };
 
-      localStorage.setItem("team_id", payload.team.id);
-      localStorage.setItem("player_name", payload.display_name);
-      localStorage.setItem(
-        "is_leader",
-        payload.team.leader_name === payload.display_name ? "true" : "false",
-      );
-      setSession({
-        teamId: payload.team.id,
-        playerName: payload.display_name,
-        isLeader: payload.team.leader_name === payload.display_name,
-      });
-    });
+    void bootstrapSession();
   }, [router]);
 
   useEffect(() => {

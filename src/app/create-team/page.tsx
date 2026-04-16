@@ -22,41 +22,52 @@ export default function CreateTeamPage() {
 
   useEffect(() => {
     const check = async () => {
-      const { data } = await supabaseBrowser.auth.getSession();
-      if (!data.session) {
-        router.replace("/auth?redirect=/create-team");
-        return;
-      }
+      try {
+        let { data } = await supabaseBrowser.auth.getSession();
+        if (!data.session) {
+          await supabaseBrowser.auth.refreshSession();
+          ({ data } = await supabaseBrowser.auth.getSession());
+        }
 
-      const metadata = data.session.user.user_metadata ?? {};
-      const suggestedLeaderName =
-        typeof metadata.display_name === "string" && metadata.display_name.trim()
-          ? metadata.display_name.trim()
-          : typeof metadata.full_name === "string" && metadata.full_name.trim()
-            ? metadata.full_name.trim()
-            : typeof metadata.name === "string" && metadata.name.trim()
-              ? metadata.name.trim()
-              : "";
+        if (!data.session) {
+          router.replace("/auth?redirect=/create-team");
+          return;
+        }
 
-      if (suggestedLeaderName) {
-        setLeaderName((previous) => (previous.trim() ? previous : suggestedLeaderName));
-      }
+        const metadata = data.session.user.user_metadata ?? {};
+        const suggestedLeaderName =
+          typeof metadata.display_name === "string" && metadata.display_name.trim()
+            ? metadata.display_name.trim()
+            : typeof metadata.full_name === "string" && metadata.full_name.trim()
+              ? metadata.full_name.trim()
+              : typeof metadata.name === "string" && metadata.name.trim()
+                ? metadata.name.trim()
+                : "";
 
-      const response = await fetch("/api/players/me", {
-        headers: { Authorization: `Bearer ${data.session.access_token}` },
-      });
-      const payload = await response.json().catch(() => null);
-      if (response.ok && payload?.team) {
-        router.replace("/team");
-        return;
+        if (suggestedLeaderName) {
+          setLeaderName((previous) => (previous.trim() ? previous : suggestedLeaderName));
+        }
+
+        const response = await fetch("/api/players/me", {
+          headers: { Authorization: `Bearer ${data.session.access_token}` },
+        });
+        const payload = await response.json().catch(() => null);
+        if (response.ok && payload?.team) {
+          router.replace("/team");
+          return;
+        }
+
+        if (!authEntrySoundPlayedRef.current) {
+          authEntrySoundPlayedRef.current = true;
+          playSound("auth_success");
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to initialize session");
+      } finally {
+        setCheckingAuth(false);
       }
-      if (!authEntrySoundPlayedRef.current) {
-        authEntrySoundPlayedRef.current = true;
-        playSound("auth_success");
-      }
-      setCheckingAuth(false);
     };
-    check();
+    void check();
   }, [router]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -67,6 +78,7 @@ export default function CreateTeamPage() {
 
     const { data } = await supabaseBrowser.auth.getSession();
     if (!data.session) {
+      setLoading(false);
       router.replace("/auth?redirect=/create-team");
       return;
     }

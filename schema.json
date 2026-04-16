@@ -1,0 +1,2302 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "description": "",
+    "title": "standard public schema",
+    "version": "14.4"
+  },
+  "host": "loyxsenrwqscannylhym.supabase.co:443",
+  "basePath": "/",
+  "schemes": [
+    "https"
+  ],
+  "consumes": [
+    "application/json",
+    "application/vnd.pgrst.object+json;nulls=stripped",
+    "application/vnd.pgrst.object+json",
+    "text/csv"
+  ],
+  "produces": [
+    "application/json",
+    "application/vnd.pgrst.object+json;nulls=stripped",
+    "application/vnd.pgrst.object+json",
+    "text/csv"
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "produces": [
+          "application/openapi+json",
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "OpenAPI description (this document)",
+        "tags": [
+          "Introspection"
+        ]
+      }
+    },
+    "/box_opens": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.box_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.team_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.opened_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.submitted_answer"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.validated_by_admin"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.round_id"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/order"
+          },
+          {
+            "$ref": "#/parameters/range"
+          },
+          {
+            "$ref": "#/parameters/rangeUnit"
+          },
+          {
+            "$ref": "#/parameters/offset"
+          },
+          {
+            "$ref": "#/parameters/limit"
+          },
+          {
+            "$ref": "#/parameters/preferCount"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "items": {
+                "$ref": "#/definitions/box_opens"
+              },
+              "type": "array"
+            }
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        },
+        "tags": [
+          "box_opens"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/body.box_opens"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/preferPost"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "box_opens"
+        ]
+      },
+      "delete": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.box_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.team_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.opened_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.submitted_answer"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.validated_by_admin"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.round_id"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "box_opens"
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.box_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.team_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.opened_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.submitted_answer"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.validated_by_admin"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.box_opens.round_id"
+          },
+          {
+            "$ref": "#/parameters/body.box_opens"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "box_opens"
+        ]
+      }
+    },
+    "/players": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.players.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.players.team_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.players.display_name"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.players.joined_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.players.user_id"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/order"
+          },
+          {
+            "$ref": "#/parameters/range"
+          },
+          {
+            "$ref": "#/parameters/rangeUnit"
+          },
+          {
+            "$ref": "#/parameters/offset"
+          },
+          {
+            "$ref": "#/parameters/limit"
+          },
+          {
+            "$ref": "#/parameters/preferCount"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "items": {
+                "$ref": "#/definitions/players"
+              },
+              "type": "array"
+            }
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        },
+        "tags": [
+          "players"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/body.players"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/preferPost"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "players"
+        ]
+      },
+      "delete": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.players.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.players.team_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.players.display_name"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.players.joined_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.players.user_id"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "players"
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.players.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.players.team_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.players.display_name"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.players.joined_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.players.user_id"
+          },
+          {
+            "$ref": "#/parameters/body.players"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "players"
+        ]
+      }
+    },
+    "/team_events": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.team_events.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_events.team_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_events.event_type"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_events.message"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_events.created_at"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/order"
+          },
+          {
+            "$ref": "#/parameters/range"
+          },
+          {
+            "$ref": "#/parameters/rangeUnit"
+          },
+          {
+            "$ref": "#/parameters/offset"
+          },
+          {
+            "$ref": "#/parameters/limit"
+          },
+          {
+            "$ref": "#/parameters/preferCount"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "items": {
+                "$ref": "#/definitions/team_events"
+              },
+              "type": "array"
+            }
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        },
+        "tags": [
+          "team_events"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/body.team_events"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/preferPost"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "team_events"
+        ]
+      },
+      "delete": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.team_events.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_events.team_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_events.event_type"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_events.message"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_events.created_at"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "team_events"
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.team_events.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_events.team_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_events.event_type"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_events.message"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_events.created_at"
+          },
+          {
+            "$ref": "#/parameters/body.team_events"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "team_events"
+        ]
+      }
+    },
+    "/teams": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.teams.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.name"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.code"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.leader_name"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.score"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.max_members"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.answer_mode"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.is_active"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.consecutive_correct"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.eliminated_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.eliminated_round"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.eliminated_position"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/order"
+          },
+          {
+            "$ref": "#/parameters/range"
+          },
+          {
+            "$ref": "#/parameters/rangeUnit"
+          },
+          {
+            "$ref": "#/parameters/offset"
+          },
+          {
+            "$ref": "#/parameters/limit"
+          },
+          {
+            "$ref": "#/parameters/preferCount"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "items": {
+                "$ref": "#/definitions/teams"
+              },
+              "type": "array"
+            }
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        },
+        "tags": [
+          "teams"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/body.teams"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/preferPost"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "teams"
+        ]
+      },
+      "delete": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.teams.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.name"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.code"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.leader_name"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.score"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.max_members"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.answer_mode"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.is_active"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.consecutive_correct"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.eliminated_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.eliminated_round"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.eliminated_position"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "teams"
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.teams.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.name"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.code"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.leader_name"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.score"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.max_members"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.answer_mode"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.is_active"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.consecutive_correct"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.eliminated_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.eliminated_round"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.teams.eliminated_position"
+          },
+          {
+            "$ref": "#/parameters/body.teams"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "teams"
+        ]
+      }
+    },
+    "/team_rounds": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.team_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.round_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.boxes_opened"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.score_this_round"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.started_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.ended_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.elapsed_seconds"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.paused_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.penalty_remaining_seconds"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.penalty_team_score"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.penalty_round_score"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.penalty_applied_at"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/order"
+          },
+          {
+            "$ref": "#/parameters/range"
+          },
+          {
+            "$ref": "#/parameters/rangeUnit"
+          },
+          {
+            "$ref": "#/parameters/offset"
+          },
+          {
+            "$ref": "#/parameters/limit"
+          },
+          {
+            "$ref": "#/parameters/preferCount"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "items": {
+                "$ref": "#/definitions/team_rounds"
+              },
+              "type": "array"
+            }
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        },
+        "tags": [
+          "team_rounds"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/body.team_rounds"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/preferPost"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "team_rounds"
+        ]
+      },
+      "delete": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.team_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.round_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.boxes_opened"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.score_this_round"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.started_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.ended_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.elapsed_seconds"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.paused_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.penalty_remaining_seconds"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.penalty_team_score"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.penalty_round_score"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.penalty_applied_at"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "team_rounds"
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.team_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.round_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.boxes_opened"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.score_this_round"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.started_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.ended_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.elapsed_seconds"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.paused_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.penalty_remaining_seconds"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.penalty_team_score"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.penalty_round_score"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.team_rounds.penalty_applied_at"
+          },
+          {
+            "$ref": "#/parameters/body.team_rounds"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "team_rounds"
+        ]
+      }
+    },
+    "/rounds": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.rounds.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.title"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.started_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.ended_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.round_number"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.duration_seconds"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.base_points"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.elapsed_seconds"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.paused_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.ended_by"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/order"
+          },
+          {
+            "$ref": "#/parameters/range"
+          },
+          {
+            "$ref": "#/parameters/rangeUnit"
+          },
+          {
+            "$ref": "#/parameters/offset"
+          },
+          {
+            "$ref": "#/parameters/limit"
+          },
+          {
+            "$ref": "#/parameters/preferCount"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "items": {
+                "$ref": "#/definitions/rounds"
+              },
+              "type": "array"
+            }
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        },
+        "tags": [
+          "rounds"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/body.rounds"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/preferPost"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "rounds"
+        ]
+      },
+      "delete": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.rounds.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.title"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.started_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.ended_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.round_number"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.duration_seconds"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.base_points"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.elapsed_seconds"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.paused_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.ended_by"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "rounds"
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.rounds.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.title"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.started_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.ended_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.round_number"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.duration_seconds"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.base_points"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.elapsed_seconds"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.paused_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.rounds.ended_by"
+          },
+          {
+            "$ref": "#/parameters/body.rounds"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "rounds"
+        ]
+      }
+    },
+    "/mystery_boxes": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.box_number"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.game_title"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.game_description"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.game_type"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.points_value"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.is_locked"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.assigned_by_admin"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.round_number"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/order"
+          },
+          {
+            "$ref": "#/parameters/range"
+          },
+          {
+            "$ref": "#/parameters/rangeUnit"
+          },
+          {
+            "$ref": "#/parameters/offset"
+          },
+          {
+            "$ref": "#/parameters/limit"
+          },
+          {
+            "$ref": "#/parameters/preferCount"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "items": {
+                "$ref": "#/definitions/mystery_boxes"
+              },
+              "type": "array"
+            }
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        },
+        "tags": [
+          "mystery_boxes"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/body.mystery_boxes"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/preferPost"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "mystery_boxes"
+        ]
+      },
+      "delete": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.box_number"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.game_title"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.game_description"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.game_type"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.points_value"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.is_locked"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.assigned_by_admin"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.round_number"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "mystery_boxes"
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.box_number"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.game_title"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.game_description"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.game_type"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.points_value"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.is_locked"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.assigned_by_admin"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.mystery_boxes.round_number"
+          },
+          {
+            "$ref": "#/parameters/body.mystery_boxes"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "mystery_boxes"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "box_opens": {
+      "required": [
+        "id",
+        "box_id",
+        "team_id",
+        "opened_at",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "box_id": {
+          "description": "Note:\nThis is a Foreign Key to `mystery_boxes.id`.<fk table='mystery_boxes' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "team_id": {
+          "description": "Note:\nThis is a Foreign Key to `teams.id`.<fk table='teams' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "opened_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "status": {
+          "default": "pending",
+          "format": "text",
+          "type": "string"
+        },
+        "submitted_answer": {
+          "format": "text",
+          "type": "string"
+        },
+        "validated_by_admin": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "round_id": {
+          "description": "Note:\nThis is a Foreign Key to `rounds.id`.<fk table='rounds' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "players": {
+      "required": [
+        "id",
+        "team_id",
+        "display_name",
+        "joined_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "team_id": {
+          "description": "Note:\nThis is a Foreign Key to `teams.id`.<fk table='teams' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "display_name": {
+          "format": "text",
+          "type": "string"
+        },
+        "joined_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "user_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "team_events": {
+      "required": [
+        "id",
+        "team_id",
+        "event_type",
+        "message",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "team_id": {
+          "description": "Note:\nThis is a Foreign Key to `teams.id`.<fk table='teams' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "event_type": {
+          "format": "text",
+          "type": "string"
+        },
+        "message": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "teams": {
+      "required": [
+        "id",
+        "name",
+        "code",
+        "leader_name",
+        "score",
+        "max_members",
+        "answer_mode",
+        "is_active",
+        "created_at",
+        "consecutive_correct"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "name": {
+          "format": "text",
+          "type": "string"
+        },
+        "code": {
+          "format": "character",
+          "maxLength": 1,
+          "type": "string"
+        },
+        "leader_name": {
+          "format": "text",
+          "type": "string"
+        },
+        "score": {
+          "default": 0,
+          "format": "integer",
+          "type": "integer"
+        },
+        "max_members": {
+          "default": 5,
+          "format": "integer",
+          "type": "integer"
+        },
+        "answer_mode": {
+          "default": "leader_only",
+          "format": "text",
+          "type": "string"
+        },
+        "is_active": {
+          "default": true,
+          "format": "boolean",
+          "type": "boolean"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "consecutive_correct": {
+          "default": 0,
+          "format": "integer",
+          "type": "integer"
+        },
+        "eliminated_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "eliminated_round": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "eliminated_position": {
+          "format": "integer",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "team_rounds": {
+      "required": [
+        "id",
+        "team_id",
+        "round_id",
+        "boxes_opened",
+        "score_this_round",
+        "status",
+        "elapsed_seconds"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "team_id": {
+          "description": "Note:\nThis is a Foreign Key to `teams.id`.<fk table='teams' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "round_id": {
+          "description": "Note:\nThis is a Foreign Key to `rounds.id`.<fk table='rounds' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "boxes_opened": {
+          "default": 0,
+          "format": "integer",
+          "type": "integer"
+        },
+        "score_this_round": {
+          "default": 0,
+          "format": "integer",
+          "type": "integer"
+        },
+        "status": {
+          "default": "waiting",
+          "format": "text",
+          "type": "string"
+        },
+        "started_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "ended_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "elapsed_seconds": {
+          "default": 0,
+          "format": "integer",
+          "type": "integer"
+        },
+        "paused_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "penalty_remaining_seconds": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "penalty_team_score": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "penalty_round_score": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "penalty_applied_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "rounds": {
+      "required": [
+        "id",
+        "status",
+        "created_at",
+        "elapsed_seconds"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": {
+          "format": "text",
+          "type": "string"
+        },
+        "status": {
+          "default": "waiting",
+          "format": "text",
+          "type": "string"
+        },
+        "started_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "ended_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "round_number": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "duration_seconds": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "base_points": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "elapsed_seconds": {
+          "default": 0,
+          "format": "integer",
+          "type": "integer"
+        },
+        "paused_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "ended_by": {
+          "format": "text",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "mystery_boxes": {
+      "required": [
+        "id",
+        "game_type",
+        "points_value",
+        "is_locked",
+        "assigned_by_admin",
+        "created_at",
+        "round_number"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "box_number": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "game_title": {
+          "format": "text",
+          "type": "string"
+        },
+        "game_description": {
+          "format": "text",
+          "type": "string"
+        },
+        "game_type": {
+          "default": "task",
+          "format": "text",
+          "type": "string"
+        },
+        "points_value": {
+          "default": 0,
+          "format": "integer",
+          "type": "integer"
+        },
+        "is_locked": {
+          "default": false,
+          "format": "boolean",
+          "type": "boolean"
+        },
+        "assigned_by_admin": {
+          "default": false,
+          "format": "boolean",
+          "type": "boolean"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "round_number": {
+          "format": "integer",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "parameters": {
+    "preferParams": {
+      "name": "Prefer",
+      "description": "Preference",
+      "required": false,
+      "in": "header",
+      "type": "string"
+    },
+    "preferReturn": {
+      "name": "Prefer",
+      "description": "Preference",
+      "required": false,
+      "enum": [
+        "return=representation",
+        "return=minimal",
+        "return=none"
+      ],
+      "in": "header",
+      "type": "string"
+    },
+    "preferCount": {
+      "name": "Prefer",
+      "description": "Preference",
+      "required": false,
+      "enum": [
+        "count=none"
+      ],
+      "in": "header",
+      "type": "string"
+    },
+    "preferPost": {
+      "name": "Prefer",
+      "description": "Preference",
+      "required": false,
+      "enum": [
+        "return=representation",
+        "return=minimal",
+        "return=none",
+        "resolution=ignore-duplicates",
+        "resolution=merge-duplicates"
+      ],
+      "in": "header",
+      "type": "string"
+    },
+    "select": {
+      "name": "select",
+      "description": "Filtering Columns",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "on_conflict": {
+      "name": "on_conflict",
+      "description": "On Conflict",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "order": {
+      "name": "order",
+      "description": "Ordering",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "range": {
+      "name": "Range",
+      "description": "Limiting and Pagination",
+      "required": false,
+      "in": "header",
+      "type": "string"
+    },
+    "rangeUnit": {
+      "name": "Range-Unit",
+      "description": "Limiting and Pagination",
+      "required": false,
+      "default": "items",
+      "in": "header",
+      "type": "string"
+    },
+    "offset": {
+      "name": "offset",
+      "description": "Limiting and Pagination",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "limit": {
+      "name": "limit",
+      "description": "Limiting and Pagination",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "body.box_opens": {
+      "name": "box_opens",
+      "description": "box_opens",
+      "required": false,
+      "in": "body",
+      "schema": {
+        "$ref": "#/definitions/box_opens"
+      }
+    },
+    "rowFilter.box_opens.id": {
+      "name": "id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.box_opens.box_id": {
+      "name": "box_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.box_opens.team_id": {
+      "name": "team_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.box_opens.opened_at": {
+      "name": "opened_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.box_opens.status": {
+      "name": "status",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.box_opens.submitted_answer": {
+      "name": "submitted_answer",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.box_opens.validated_by_admin": {
+      "name": "validated_by_admin",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.box_opens.round_id": {
+      "name": "round_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "body.players": {
+      "name": "players",
+      "description": "players",
+      "required": false,
+      "in": "body",
+      "schema": {
+        "$ref": "#/definitions/players"
+      }
+    },
+    "rowFilter.players.id": {
+      "name": "id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.players.team_id": {
+      "name": "team_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.players.display_name": {
+      "name": "display_name",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.players.joined_at": {
+      "name": "joined_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.players.user_id": {
+      "name": "user_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "body.team_events": {
+      "name": "team_events",
+      "description": "team_events",
+      "required": false,
+      "in": "body",
+      "schema": {
+        "$ref": "#/definitions/team_events"
+      }
+    },
+    "rowFilter.team_events.id": {
+      "name": "id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_events.team_id": {
+      "name": "team_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_events.event_type": {
+      "name": "event_type",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_events.message": {
+      "name": "message",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_events.created_at": {
+      "name": "created_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "body.teams": {
+      "name": "teams",
+      "description": "teams",
+      "required": false,
+      "in": "body",
+      "schema": {
+        "$ref": "#/definitions/teams"
+      }
+    },
+    "rowFilter.teams.id": {
+      "name": "id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.teams.name": {
+      "name": "name",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.teams.code": {
+      "name": "code",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.teams.leader_name": {
+      "name": "leader_name",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.teams.score": {
+      "name": "score",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.teams.max_members": {
+      "name": "max_members",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.teams.answer_mode": {
+      "name": "answer_mode",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.teams.is_active": {
+      "name": "is_active",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.teams.created_at": {
+      "name": "created_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.teams.consecutive_correct": {
+      "name": "consecutive_correct",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.teams.eliminated_at": {
+      "name": "eliminated_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.teams.eliminated_round": {
+      "name": "eliminated_round",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.teams.eliminated_position": {
+      "name": "eliminated_position",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "body.team_rounds": {
+      "name": "team_rounds",
+      "description": "team_rounds",
+      "required": false,
+      "in": "body",
+      "schema": {
+        "$ref": "#/definitions/team_rounds"
+      }
+    },
+    "rowFilter.team_rounds.id": {
+      "name": "id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.team_id": {
+      "name": "team_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.round_id": {
+      "name": "round_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.boxes_opened": {
+      "name": "boxes_opened",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.score_this_round": {
+      "name": "score_this_round",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.status": {
+      "name": "status",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.started_at": {
+      "name": "started_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.ended_at": {
+      "name": "ended_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.elapsed_seconds": {
+      "name": "elapsed_seconds",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.paused_at": {
+      "name": "paused_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.penalty_remaining_seconds": {
+      "name": "penalty_remaining_seconds",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.penalty_team_score": {
+      "name": "penalty_team_score",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.penalty_round_score": {
+      "name": "penalty_round_score",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.team_rounds.penalty_applied_at": {
+      "name": "penalty_applied_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "body.rounds": {
+      "name": "rounds",
+      "description": "rounds",
+      "required": false,
+      "in": "body",
+      "schema": {
+        "$ref": "#/definitions/rounds"
+      }
+    },
+    "rowFilter.rounds.id": {
+      "name": "id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.rounds.title": {
+      "name": "title",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.rounds.status": {
+      "name": "status",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.rounds.started_at": {
+      "name": "started_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.rounds.ended_at": {
+      "name": "ended_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.rounds.created_at": {
+      "name": "created_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.rounds.round_number": {
+      "name": "round_number",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.rounds.duration_seconds": {
+      "name": "duration_seconds",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.rounds.base_points": {
+      "name": "base_points",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.rounds.elapsed_seconds": {
+      "name": "elapsed_seconds",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.rounds.paused_at": {
+      "name": "paused_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.rounds.ended_by": {
+      "name": "ended_by",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "body.mystery_boxes": {
+      "name": "mystery_boxes",
+      "description": "mystery_boxes",
+      "required": false,
+      "in": "body",
+      "schema": {
+        "$ref": "#/definitions/mystery_boxes"
+      }
+    },
+    "rowFilter.mystery_boxes.id": {
+      "name": "id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.mystery_boxes.box_number": {
+      "name": "box_number",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.mystery_boxes.game_title": {
+      "name": "game_title",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.mystery_boxes.game_description": {
+      "name": "game_description",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.mystery_boxes.game_type": {
+      "name": "game_type",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.mystery_boxes.points_value": {
+      "name": "points_value",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.mystery_boxes.is_locked": {
+      "name": "is_locked",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.mystery_boxes.assigned_by_admin": {
+      "name": "assigned_by_admin",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.mystery_boxes.created_at": {
+      "name": "created_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.mystery_boxes.round_number": {
+      "name": "round_number",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    }
+  },
+  "externalDocs": {
+    "description": "PostgREST Documentation",
+    "url": "https://postgrest.org/en/v14/references/api.html"
+  }
+}
