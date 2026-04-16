@@ -250,9 +250,10 @@ export async function POST(request: NextRequest) {
     if ((round.round_number ?? 0) === 1) {
       const { data: rankedTeams, error: rankedTeamsError } = await supabase
         .from("teams")
-        .select("id, score, created_at")
+        .select("id, score, updated_at, created_at")
         .eq("is_active", true)
         .order("score", { ascending: false })
+        .order("updated_at", { ascending: true })
         .order("created_at", { ascending: true });
 
       if (rankedTeamsError) {
@@ -272,6 +273,9 @@ export async function POST(request: NextRequest) {
             eliminated_at: null,
             eliminated_round: null,
             eliminated_position: null,
+            round2_status: null,
+            round2_solved_at: null,
+            round2_lock_until: null,
           })
           .in("id", survivingTeams.map((team) => team.id));
       }

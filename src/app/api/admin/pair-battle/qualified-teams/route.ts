@@ -14,13 +14,33 @@ export async function GET(request: NextRequest) {
 
   const supabase = createAdminClient();
 
-  // Get top teams by score (Round 1 survivors)
+  // Prefer explicit Round 2 selection written during Round 1 elimination sync.
+  const { data: pendingTeams, error: pendingError } = await supabase
+    .from("teams")
+    .select("id, name, leader_name, score, is_active, eliminated_round, round2_status, updated_at, created_at")
+    .eq("round2_status", "pending")
+    .order("score", { ascending: false })
+    .order("updated_at", { ascending: true })
+    .order("created_at", { ascending: true })
+    .limit(ROUND2_QUALIFIED_TEAM_LIMIT);
+
+  if (pendingError) {
+    return NextResponse.json({ error: pendingError.message }, { status: 500 });
+  }
+
+  if ((pendingTeams?.length ?? 0) > 0) {
+    return NextResponse.json(pendingTeams ?? []);
+  }
+
+  // Backward compatibility fallback: derive from active survivors.
   const { data: teams, error } = await supabase
     .from("teams")
-    .select("id, name, leader_name, score, is_active, eliminated_round")
+    .select("id, name, leader_name, score, is_active, eliminated_round, updated_at, created_at")
     .eq("is_active", true)
     .is("eliminated_round", null)
     .order("score", { ascending: false })
+    .order("updated_at", { ascending: true })
+    .order("created_at", { ascending: true })
     .limit(ROUND2_QUALIFIED_TEAM_LIMIT);
 
   if (error) {

@@ -52,7 +52,32 @@ export async function POST(request: NextRequest) {
       .insert(missingRows);
 
     if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
+      // Compatibility fallback: some schemas enforce unique pair_number globally.
+      // In that case, recycle existing rows by pair_number into the current round.
+      const missingNumbers = missingRows.map((row) => row.pair_number);
+      const { data: recyclableRows, error: recyclableError } = await supabase
+        .from("pair_pairings")
+        .select("id, pair_number")
+        .in("pair_number", missingNumbers)
+        .order("created_at", { ascending: false });
+
+      if (recyclableError || !recyclableRows || recyclableRows.length === 0) {
+        return NextResponse.json({ error: insertError.message }, { status: 500 });
+      }
+
+      for (const row of recyclableRows) {
+        await supabase
+          .from("pair_pairings")
+          .update({
+            round_id: body.roundId,
+            status: "waiting",
+            team_a_id: null,
+            team_b_id: null,
+            winner_id: null,
+            started_at: null,
+          })
+          .eq("id", row.id);
+      }
     }
   }
 

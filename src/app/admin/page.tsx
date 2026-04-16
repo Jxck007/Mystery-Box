@@ -11,6 +11,8 @@ type TeamDetail = {
   name: string;
   leader_name: string;
   score: number;
+  updated_at?: string | null;
+  created_at?: string | null;
   member_count?: number;
   max_members?: number;
   is_active?: boolean;
@@ -256,6 +258,14 @@ export default function AdminDashboardPage() {
     };
   }, [authorized, refreshAll]);
 
+  useEffect(() => {
+    if (!authorized) return;
+    const id = window.setInterval(() => {
+      void refreshAll();
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [authorized, refreshAll]);
+
   const handleRoundAction = async (
     action: "start" | "end" | "pause_team" | "resume_team",
     roundNumber: number,
@@ -417,6 +427,12 @@ export default function AdminDashboardPage() {
     return [...teams].sort((a, b) => {
       const scoreDiff = (b.score ?? 0) - (a.score ?? 0);
       if (scoreDiff !== 0) return scoreDiff;
+      const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : Number.MAX_SAFE_INTEGER;
+      const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : Number.MAX_SAFE_INTEGER;
+      if (aUpdated !== bUpdated) return aUpdated - bUpdated;
+      const aCreated = a.created_at ? new Date(a.created_at).getTime() : Number.MAX_SAFE_INTEGER;
+      const bCreated = b.created_at ? new Date(b.created_at).getTime() : Number.MAX_SAFE_INTEGER;
+      if (aCreated !== bCreated) return aCreated - bCreated;
       return (a.name ?? "").localeCompare(b.name ?? "");
     });
   }, [teams]);
@@ -427,9 +443,19 @@ export default function AdminDashboardPage() {
       .sort((a, b) => {
         const scoreDiff = (b.score ?? 0) - (a.score ?? 0);
         if (scoreDiff !== 0) return scoreDiff;
+        const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : Number.MAX_SAFE_INTEGER;
+        const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : Number.MAX_SAFE_INTEGER;
+        if (aUpdated !== bUpdated) return aUpdated - bUpdated;
+        const aCreated = a.created_at ? new Date(a.created_at).getTime() : Number.MAX_SAFE_INTEGER;
+        const bCreated = b.created_at ? new Date(b.created_at).getTime() : Number.MAX_SAFE_INTEGER;
+        if (aCreated !== bCreated) return aCreated - bCreated;
         return (a.name ?? "").localeCompare(b.name ?? "");
       });
   }, [teams]);
+
+  const top16LiveTeams = useMemo(() => {
+    return sortedActiveTeamsByScore.slice(0, ROUND1_SURVIVOR_LIMIT);
+  }, [sortedActiveTeamsByScore]);
 
   const projectedRound1SelectedIds = useMemo(() => {
     const cut = Math.min(sortedActiveTeamsByScore.length, ROUND1_SURVIVOR_LIMIT);
@@ -478,23 +504,20 @@ export default function AdminDashboardPage() {
     return teams.filter((team) => team.round2_status === "qualified").length;
   }, [teams]);
 
-  const latestAutoEndedRound = useMemo(() => {
-    const autoEnded = rounds.filter((round) => round.ended_by === "auto");
-    if (autoEnded.length === 0) return null;
-    return autoEnded.reduce((latest, round) => {
-      if ((round.round_number ?? 0) > (latest.round_number ?? 0)) return round;
-      return latest;
-    });
+  const round1Ended = useMemo(() => {
+    return rounds.some((round) => (round.round_number ?? 0) === 1 && round.status === "ended");
   }, [rounds]);
 
-  const eliminationStage = useMemo(() => {
-    return latestAutoEndedRound?.round_number ?? 0;
-  }, [latestAutoEndedRound]);
+  const round1Active = useMemo(() => {
+    return rounds.some((round) => (round.round_number ?? 0) === 1 && round.status === "active");
+  }, [rounds]);
+
+  const eliminationRows = useMemo(() => {
+    return round1Ended ? sortedTeamsByScore : sortedActiveTeamsByScore;
+  }, [round1Ended, sortedTeamsByScore, sortedActiveTeamsByScore]);
 
   const round2TabUnlocked = useMemo(() => {
-    const round1Ended = rounds.some((round) => (round.round_number ?? 0) === 1 && round.status === "ended");
     if (round1Ended) return true;
-    if (eliminationStage >= 1) return true;
     const activeTeamCount = teams.filter((team) => team.is_active !== false).length;
     if (activeTeamCount > 0 && activeTeamCount <= ROUND1_SURVIVOR_LIMIT) return true;
     return teams.some(
@@ -503,7 +526,7 @@ export default function AdminDashboardPage() {
         team.round2_status === "pending" ||
         team.round2_status === "qualified",
     );
-  }, [eliminationStage, rounds, teams]);
+  }, [round1Ended, teams]);
 
   const activeRoundNumber = useMemo(() => {
     const activeRound = rounds.find((round) => round.status === "active");
@@ -567,6 +590,12 @@ export default function AdminDashboardPage() {
       setAdminTab("round1");
     }
   }, [adminTab, round2TabUnlocked]);
+
+  useEffect(() => {
+    if (adminTab === "round1") {
+      setSelectedRoundNumber(1);
+    }
+  }, [adminTab]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -884,7 +913,7 @@ export default function AdminDashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {teams.map((team) => (
+              {(round1Active ? top16LiveTeams : sortedTeamsByScore).map((team) => (
                 <tr key={team.id}>
                   <td>
                     <div className="font-semibold text-slate-100">{team.name}</div>
@@ -953,10 +982,12 @@ export default function AdminDashboardPage() {
           <span>Round 1 cut: Top {eliminationSummary.round1Cut} active teams</span>
               <span>Round 2 cut: First {eliminationSummary.round2Cut} solves</span>
               <span>Round 2 solved: {round2SolvedCount}</span>
-              <span>Round 2 qualified: {round2QualifiedCount}</span>
+              <span>Round 2 selected: {round2QualifiedCount}/{ROUND2_PAIR_COUNT}</span>
           <span>
-            Status: {eliminationStage > 0
-              ? `Round ${eliminationStage} officially ended`
+            Status: {round2QualifiedCount > 0
+              ? `Round 2 in progress (${round2QualifiedCount}/${ROUND2_PAIR_COUNT} selected)`
+              : round1Ended
+              ? "Round 1 cut applied"
               : "Waiting for official round end"}
           </span>
         </div>
@@ -964,11 +995,13 @@ export default function AdminDashboardPage() {
               {(() => {
                 const busyKey = "elimination-round1";
                 const busy = actionBusy[busyKey];
+                const disabled = busy || !round1Ended;
                 return (
                   <button
                     className="admin-action-button button-neutral"
                     onClick={() => handleApplyElimination(1, busyKey)}
-                    disabled={busy}
+                    disabled={disabled}
+                    title={!round1Ended ? "End Round 1 before applying Top 16 cut" : ""}
                   >
                     {busy ? "Syncing..." : `Apply Round 1 Cut (Top ${ROUND1_SURVIVOR_LIMIT})`}
                   </button>
@@ -990,26 +1023,17 @@ export default function AdminDashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {sortedTeamsByScore.map((team, index) => {
+              {eliminationRows.map((team, index) => {
                 const rank = index + 1;
                 const isActuallyRound1Selected =
                   team.is_active !== false && team.eliminated_round !== 1;
                 const isProjectedRound1Selected = projectedRound1SelectedIds.has(team.id);
                 let statusLabel = "In play";
-                if (eliminationStage >= 2) {
-                  statusLabel =
-                    team.round2_status === "qualified"
-                      ? "Qualified"
-                      : team.round2_solved_at
-                      ? "Round 2 Out"
-                      : team.eliminated_round === 1
-                      ? "Not Selected"
-                      : isActuallyRound1Selected
-                      ? "Selected"
-                      : team.eliminated_round === 1
-                      ? "Not Selected"
-                      : "Round 2 Out";
-                } else if (eliminationStage >= 1) {
+                if (team.round2_status === "qualified") {
+                  statusLabel = "Round 2 Selected";
+                } else if (team.round2_status === "eliminated" || (team.round2_solved_at && team.round2_status !== "qualified")) {
+                  statusLabel = "Round 2 Out";
+                } else if (round1Ended) {
                   statusLabel = isActuallyRound1Selected ? "Selected" : "Not Selected";
                 } else {
                   statusLabel = isProjectedRound1Selected ? "Projected Selected" : "Projected Out";
@@ -1017,7 +1041,7 @@ export default function AdminDashboardPage() {
                 const rowClass =
                   statusLabel === "Winner"
                     ? "bg-emerald-500/10"
-                    : statusLabel === "Qualified"
+                    : statusLabel === "Round 2 Selected"
                     ? "bg-sky-500/10"
                     : statusLabel === "Selected"
                     ? "bg-lime-500/20"

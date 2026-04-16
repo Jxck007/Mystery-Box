@@ -155,25 +155,32 @@ export function PairBattleBoard({
     if (!headers) return;
     setLoading(true);
     onStatusChange?.("Preparing Round 2 pair arena...");
-    const response = await fetch("/api/admin/pair-battle/setup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify({ roundId }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      onStatusChange?.(data.error ?? "Unable to prepare pairs");
+    try {
+      const response = await fetch("/api/admin/pair-battle/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ roundId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        onStatusChange?.(data.error ?? "Unable to prepare pairs");
+        return;
+      }
+
+      await fetchQualifiedTeams();
+      await fetchPairingStatus();
+
+      const nextPairings = Array.isArray(data.pairings) ? data.pairings : [];
+      if (nextPairings.length === 0) {
+        onStatusChange?.("Pair setup completed but no pair rows are available yet. Check selected Round 2 teams.");
+        return;
+      }
+
+      onStatusChange?.("Pair battle setup unlocked.");
+    } finally {
       setLoading(false);
-      return;
     }
-    const nextPairings = Array.isArray(data.pairings) ? data.pairings : [];
-    setPairings(nextPairings);
-    setDraftPairings(nextPairings);
-    setHasDraftChanges(false);
-    setSetupDone(true);
-    onStatusChange?.("Pair battle setup unlocked.");
-    setLoading(false);
-  }, [getAdminHeaders, onStatusChange, roundId]);
+  }, [fetchPairingStatus, fetchQualifiedTeams, getAdminHeaders, onStatusChange, roundId]);
 
   const assignTeam = useCallback(async (pairingId: string, teamId: string | null, slot: "a" | "b") => {
     const headers = await getAdminHeaders();
