@@ -304,6 +304,37 @@ export async function POST(request: NextRequest) {
           })),
         );
       }
+
+      const { data: existingRound2, error: round2LookupError } = await supabase
+        .from("rounds")
+        .select("id")
+        .eq("round_number", 2)
+        .maybeSingle();
+
+      if (round2LookupError) {
+        return NextResponse.json({ error: round2LookupError.message }, { status: 500 });
+      }
+
+      if (!existingRound2) {
+        const fallbackDuration =
+          typeof round.duration_seconds === "number" && round.duration_seconds > 0
+            ? round.duration_seconds
+            : 300;
+
+        const { error: createRound2Error } = await supabase
+          .from("rounds")
+          .insert({
+            round_number: 2,
+            title: "Round 2",
+            status: "waiting",
+            duration_seconds: fallbackDuration,
+            elapsed_seconds: 0,
+          });
+
+        if (createRound2Error) {
+          return NextResponse.json({ error: createRound2Error.message }, { status: 500 });
+        }
+      }
     }
 
     await supabase

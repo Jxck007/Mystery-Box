@@ -20,6 +20,17 @@ export const BATTLE_COLOR_PALETTE: BattleColor[] = [
   { name: "Violet", hex: "#b890ff", glow: "rgba(184, 144, 255, 0.45)", text: "#1f1333" },
 ];
 
+export const DEFAULT_BATTLE_COLOR_CODES: Record<string, string> = {
+  "Light Green": "3423",
+  "Light Brown": "4736",
+  Yellow: "1526",
+  "Light Blue": "0957",
+  White: "1983",
+  Pink: "2407",
+  Orange: "5267",
+  Violet: "8031",
+};
+
 export type Round2ColorEventPayload = {
   teamId: string;
   color: string;

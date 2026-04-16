@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BATTLE_COLOR_PALETTE,
+  DEFAULT_BATTLE_COLOR_CODES,
   getBattleColor,
   ROUND2_PAIR_COUNT,
   ROUND2_QUALIFIED_TEAM_LIMIT,
@@ -86,9 +87,9 @@ export function PairBattleBoard({
   const [pairingStarted, setPairingStarted] = useState(false);
   const [pairCodeInputs, setPairCodeInputs] = useState<Record<string, string>>({});
   const [pairColorDraft, setPairColorDraft] = useState<Record<string, { a: string; b: string }>>({});
-  const [masterColorCodes, setMasterColorCodes] = useState<Record<string, string>>(() =>
-    Object.fromEntries(BATTLE_COLOR_PALETTE.map((entry) => [entry.name, ""])),
-  );
+  const [masterColorCodes, setMasterColorCodes] = useState<Record<string, string>>(() => ({
+    ...DEFAULT_BATTLE_COLOR_CODES,
+  }));
   const [lockedMasterColors, setLockedMasterColors] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(BATTLE_COLOR_PALETTE.map((entry) => [entry.name, false])),
   );
@@ -389,14 +390,12 @@ export function PairBattleBoard({
 
   const resetMasterCodes = useCallback(() => {
     setMasterColorCodes((prev) => {
-      const next = { ...prev };
-      BATTLE_COLOR_PALETTE.forEach((entry) => {
-        if (lockedMasterColors[entry.name]) return;
-        next[entry.name] = "";
-      });
-      return next;
+      return {
+        ...prev,
+        ...DEFAULT_BATTLE_COLOR_CODES,
+      };
     });
-    onStatusChange?.("Master color codes reset (locked colors kept).");
+    onStatusChange?.("Master color codes reset to the fixed Round 2 mapping.");
   }, [lockedMasterColors, onStatusChange]);
 
   const postPairAction = useCallback(async (
@@ -929,6 +928,40 @@ export function PairBattleBoard({
             </button>
           </div>
 
+          <section className="pair-admin-live admin-live-leaderboard">
+            <div className="admin-live-header">
+              <p className="label">ADMIN LIVE LEADERBOARD</p>
+              <p className="text-sm text-slate-300">Shows the live pair board with colors, codes, latest guesses, and attempt counts.</p>
+            </div>
+            <div className="admin-live-list">
+              {pairings.map((pairing, index) => {
+                const pairLabel = pairing.pair_number ?? index + 1;
+                const teamAState = pairing.winner_id && pairing.team_a_id === pairing.winner_id ? "winner" : pairing.status === "completed" ? "loser" : "pending";
+                const teamBState = pairing.winner_id && pairing.team_b_id === pairing.winner_id ? "winner" : pairing.status === "completed" ? "loser" : "pending";
+                return (
+                  <article key={pairing.id} className="admin-live-row">
+                    <div className="admin-live-pair">Pair {pairLabel}</div>
+                    <div className={`admin-live-team ${teamAState}`}>
+                      <strong>{pairing.team_a?.name ?? "Awaiting Team"}</strong>
+                      <span>Color: {pairing.team_a_color ?? "--"}</span>
+                      <span>Code: {pairing.team_a_code ?? "----"}</span>
+                      <span>Latest: {pairing.team_a_latest_attempt ?? "--"}</span>
+                      <span>Attempts: {pairing.team_a_attempts ?? 0}</span>
+                    </div>
+                    <div className="admin-live-vs">VS</div>
+                    <div className={`admin-live-team ${teamBState}`}>
+                      <strong>{pairing.team_b?.name ?? "Awaiting Team"}</strong>
+                      <span>Color: {pairing.team_b_color ?? "--"}</span>
+                      <span>Code: {pairing.team_b_code ?? "----"}</span>
+                      <span>Latest: {pairing.team_b_latest_attempt ?? "--"}</span>
+                      <span>Attempts: {pairing.team_b_attempts ?? 0}</span>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
           <section className="pair-admin-live">
             <div>
               <p className="label">COLOR MASTER CODE PANEL</p>
@@ -1031,6 +1064,22 @@ export function PairBattleBoard({
         .pair-meta { margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.45rem 0.7rem; color: #84a0c6; font-size: 0.68rem; font-family: var(--font-mono); }
         .pair-live-actions { margin-top: 0.6rem; display: flex; gap: 0.45rem; }
         .pair-admin-live { background: rgba(14, 20, 34, 0.8); border: 1px solid rgba(98, 151, 204, 0.28); border-radius: 0.5rem; padding: 0.9rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; justify-content: space-between; }
+        .admin-live-leaderboard { display: flex; flex-direction: column; align-items: stretch; gap: 0.8rem; }
+        .admin-live-header { display: flex; flex-direction: column; gap: 0.15rem; }
+        .admin-live-list { display: grid; gap: 0.7rem; width: 100%; }
+        .admin-live-row { display: grid; grid-template-columns: 90px 1fr 48px 1fr; gap: 0.65rem; align-items: stretch; padding: 0.7rem; border-radius: 0.45rem; background: rgba(8, 12, 24, 0.82); border: 1px solid rgba(90, 139, 190, 0.25); }
+        .admin-live-pair { font-family: var(--font-mono); font-size: 0.72rem; color: #8bc8ff; display: flex; align-items: center; justify-content: center; text-transform: uppercase; letter-spacing: 0.08em; }
+        .admin-live-vs { display: flex; align-items: center; justify-content: center; color: #7cd6ff; font-family: var(--font-headline); }
+        .admin-live-team { display: flex; flex-direction: column; gap: 0.15rem; border-radius: 0.35rem; padding: 0.55rem 0.65rem; background: rgba(12, 18, 30, 0.78); border: 1px solid rgba(93, 132, 182, 0.25); color: #dfefff; font-size: 0.72rem; }
+        .admin-live-team strong { font-size: 0.78rem; color: #fff; }
+        .admin-live-team.winner { border-color: rgba(74, 220, 151, 0.7); background: rgba(11, 43, 25, 0.78); box-shadow: 0 0 16px rgba(74, 220, 151, 0.15); }
+        .admin-live-team.loser { border-color: rgba(245, 103, 103, 0.55); background: rgba(45, 16, 20, 0.78); }
+        .admin-live-team.pending { border-color: rgba(106, 140, 188, 0.28); }
+        @media (max-width: 900px) {
+          .admin-live-row { grid-template-columns: 1fr; }
+          .admin-live-pair, .admin-live-vs { justify-content: flex-start; }
+          .admin-live-vs { padding: 0.2rem 0; }
+        }
       `}</style>
     </div>
   );

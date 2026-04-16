@@ -1062,11 +1062,45 @@ export default function AdminDashboardPage() {
       </>
       )}
       {adminTab === "round2" && round2TabUnlocked && round2Round && (
-        <PairBattleBoard 
-          roundId={round2Round.id} 
-          onStatusChange={setStatusMessage} 
-          getAdminHeaders={getAdminHeaders}
-        />
+        <>
+          <div className="card admin-section space-y-4">
+            <div>
+              <p className="label">Round 2 Control</p>
+              <h2 className="text-2xl font-semibold">Start / End Round 2</h2>
+              <p className="text-sm text-slate-300">
+                Start Round 2 to unlock the keypad phase for teams. End it when the phase is complete.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-slate-300">
+              <span>Status: {round2Round.status}</span>
+              <span>Time left: {formatTime(getLiveRemaining(round2Round))}</span>
+            </div>
+            <div className="admin-action-grid">
+              {(() => {
+                const busyKey = "round2-toggle";
+                const busy = actionBusy[busyKey];
+                const isActive = round2Round.status === "active";
+                return (
+                  <button
+                    className={`admin-action-button ${isActive ? "button-danger" : "button-success"}`}
+                    onClick={() =>
+                      handleRoundAction(isActive ? "end" : "start", 2, undefined, busyKey)
+                    }
+                    disabled={busy}
+                  >
+                    {busy ? "Syncing..." : isActive ? "End Round 2" : "Start Round 2"}
+                  </button>
+                );
+              })()}
+            </div>
+          </div>
+
+          <PairBattleBoard 
+            roundId={round2Round.id} 
+            onStatusChange={setStatusMessage} 
+            getAdminHeaders={getAdminHeaders}
+          />
+        </>
       )}
       {adminTab === "round2" && (!round2TabUnlocked || !round2Round) && (
         <div className="card admin-section space-y-2">

@@ -99,6 +99,44 @@ export async function POST(request: NextRequest) {
     .eq("round_number", 1)
     .in("status", ["active", "paused", "waiting"]);
 
+  // Ensure Round 2 exists after applying the Round 1 cut.
+  const { data: existingRound2, error: round2LookupError } = await supabase
+    .from("rounds")
+    .select("id")
+    .eq("round_number", 2)
+    .maybeSingle();
+
+  if (round2LookupError) {
+    return NextResponse.json({ error: round2LookupError.message }, { status: 500 });
+  }
+
+  if (!existingRound2) {
+    const { data: round1Config } = await supabase
+      .from("rounds")
+      .select("duration_seconds")
+      .eq("round_number", 1)
+      .maybeSingle();
+
+    const fallbackDuration =
+      typeof round1Config?.duration_seconds === "number" && round1Config.duration_seconds > 0
+        ? round1Config.duration_seconds
+        : 300;
+
+    const { error: createRound2Error } = await supabase
+      .from("rounds")
+      .insert({
+        round_number: 2,
+        title: "Round 2",
+        status: "waiting",
+        duration_seconds: fallbackDuration,
+        elapsed_seconds: 0,
+      });
+
+    if (createRound2Error) {
+      return NextResponse.json({ error: createRound2Error.message }, { status: 500 });
+    }
+  }
+
   return NextResponse.json({
     success: true,
     roundNumber: 1,

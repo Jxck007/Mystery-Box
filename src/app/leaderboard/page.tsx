@@ -397,9 +397,9 @@ export default function LeaderboardPage() {
                           </span>
                         ) : "Color pending"}
                       </div>
-                      <div className="battle-team-meta">Attempts: {pair.team_a_attempts ?? 0}</div>
-                      <div className="battle-team-meta">Latest: {pair.team_a_latest_attempt ?? "--"}</div>
-                      <div className="battle-team-meta">Code: {pair.team_a_code ?? "----"}</div>
+                      <div className="battle-team-meta battle-result">
+                        {aWon ? "CRACKED FIRST" : bWon ? "ELIMINATED" : "VS READY"}
+                      </div>
                       {aWon && <div className="battle-badge">WON</div>}
                       {bWon && <div className="battle-badge lose">ELIMINATED</div>}
                     </div>
@@ -423,9 +423,9 @@ export default function LeaderboardPage() {
                           </span>
                         ) : "Color pending"}
                       </div>
-                      <div className="battle-team-meta">Attempts: {pair.team_b_attempts ?? 0}</div>
-                      <div className="battle-team-meta">Latest: {pair.team_b_latest_attempt ?? "--"}</div>
-                      <div className="battle-team-meta">Code: {pair.team_b_code ?? "----"}</div>
+                      <div className="battle-team-meta battle-result">
+                        {bWon ? "CRACKED FIRST" : aWon ? "ELIMINATED" : "VS READY"}
+                      </div>
                       {bWon && <div className="battle-badge">WON</div>}
                       {aWon && <div className="battle-badge lose">ELIMINATED</div>}
                     </div>
@@ -553,6 +553,13 @@ export default function LeaderboardPage() {
           font-size: 0.68rem;
           color: #8da8cb;
           margin-top: 0.15rem;
+        }
+        .battle-result {
+          margin-top: 0.32rem;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: #a9dcff;
         }
         .battle-color-chip {
           display: inline-block;

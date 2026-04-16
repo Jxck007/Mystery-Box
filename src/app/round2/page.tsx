@@ -371,8 +371,6 @@ export default function Round2Page() {
               <p className="mt-2">You have been eliminated from Round 2.</p>
               <button className="button-danger mt-3" onClick={() => router.push("/leaderboard")}>Return To Leaderboard</button>
             </div>
-          ) : !team?.round2_code ? (
-            <div className="banner paused">AWAITING INPUT: ADMIN CODE NOT ASSIGNED.</div>
           ) : (
             <div className="space-y-4">
               <div className="card py-3" style={{ border: "1px solid rgba(88,175,255,0.35)" }}>
@@ -494,7 +492,7 @@ export default function Round2Page() {
                     await fetchTeam();
                     await fetchActivePairing();
                   }}
-                  disabled={round2Code.length !== 4 || lockRemaining > 0}
+                  disabled={round2Code.length !== 4 || lockRemaining > 0 || !team?.round2_code}
                 >
                   {lockRemaining > 0 ? `LOCKED ${lockRemaining}s` : "INITIALIZE"}
                 </button>
@@ -504,6 +502,9 @@ export default function Round2Page() {
                 <p className="text-sm text-green-400 font-semibold animate-pulse">
                   You cracked the code! Redirecting to the Leaderboard in {redirectCountdown}s...
                 </p>
+              )}
+              {!team?.round2_code && (
+                <p className="text-sm text-amber-300">AWAITING INPUT: ADMIN CODE NOT ASSIGNED.</p>
               )}
               {round2Status && redirectCountdown === 0 && <p className="text-sm text-[var(--text-muted)]">{round2Status}</p>}
             </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/app/api/admin/_auth";
 import {
+  DEFAULT_BATTLE_COLOR_CODES,
   encodeRound2ColorEvent,
   getBattleColor,
   randomBattleCode,
@@ -40,6 +41,12 @@ const loadColorCodeMap = async (supabase: ReturnType<typeof createAdminClient>) 
     const parsed = parseColorCode(event.message);
     if (!parsed || map.has(parsed.color)) return;
     map.set(parsed.color, parsed.code);
+  });
+
+  Object.entries(DEFAULT_BATTLE_COLOR_CODES).forEach(([color, code]) => {
+    if (!map.has(color)) {
+      map.set(color, code);
+    }
   });
 
   return map;
