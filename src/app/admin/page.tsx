@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { ROUND1_SURVIVOR_LIMIT } from "@/lib/pair-battle";
+
+const ROUND_STARTED_STORAGE_KEY = "roundStarted";
 
 type TeamDetail = {
   id: string;
@@ -71,6 +73,12 @@ export default function AdminDashboardPage() {
   const [actionBusy, setActionBusy] = useState<Record<string, boolean>>({});
   const [eventLogs, setEventLogs] = useState<TeamEventLog[]>([]);
   const [expandedTeamLogs, setExpandedTeamLogs] = useState<Record<string, boolean>>({});
+
+  const [roundStarted, setRoundStarted] = useState(false);
+  const roundStartedRef = useRef(false);
+  const actionBusyRef = useRef<Record<string, boolean>>({});
+  const launchRoundButtonRef = useRef<HTMLButtonElement | null>(null);
+  const endRoundButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const getAdminHeaders = useCallback(async () => {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -258,12 +266,12 @@ export default function AdminDashboardPage() {
     return () => window.clearInterval(id);
   }, [authorized, refreshAll]);
 
-  const handleRoundAction = async (
+  const handleRoundAction = useCallback(async (
     action: "start" | "end" | "pause_team" | "resume_team",
     roundNumber: number,
     teamId?: string,
     busyKey?: string,
-  ) => {
+  ): Promise<boolean> => {
     setStatusMessage("");
     if (busyKey) {
       setActionBusy((prev) => ({ ...prev, [busyKey]: true }));
@@ -288,7 +296,7 @@ export default function AdminDashboardPage() {
       body: JSON.stringify(payload),
     });
     if (handleAdminAuthResponse(response)) {
-      return;
+      return false;
     }
     const data = await response.json();
 
@@ -297,7 +305,7 @@ export default function AdminDashboardPage() {
       if (busyKey) {
         setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
       }
-      return;
+      return false;
     }
 
     setStatusMessage("Round updated.");
@@ -308,7 +316,96 @@ export default function AdminDashboardPage() {
     if (busyKey) {
       setActionBusy((prev) => ({ ...prev, [busyKey]: false }));
     }
-  };
+    return true;
+  }, [getAdminHeaders, handleAdminAuthResponse, refreshAll]);
+
+  const round1 = useMemo(() => {
+    return rounds.find((round) => (round.round_number ?? 0) === 1) ?? null;
+  }, [rounds]);
+
+  const roundIsRunning = useMemo(() => {
+    return round1?.status === "active" || round1?.status === "paused";
+  }, [round1?.status]);
+
+  useEffect(() => {
+    roundStartedRef.current = roundStarted;
+  }, [roundStarted]);
+
+  useEffect(() => {
+    actionBusyRef.current = actionBusy;
+  }, [actionBusy]);
+
+  const updateUI = useCallback((started: boolean) => {
+    roundStartedRef.current = started;
+    setRoundStarted(started);
+    window.localStorage.setItem(ROUND_STARTED_STORAGE_KEY, started ? "true" : "false");
+  }, []);
+
+  useEffect(() => {
+    const fromStorage = window.localStorage.getItem(ROUND_STARTED_STORAGE_KEY);
+    if (fromStorage === "true") {
+      updateUI(true);
+      return;
+    }
+    if (fromStorage === "false") {
+      updateUI(false);
+    }
+  }, [updateUI]);
+
+  useEffect(() => {
+    const startKey = "round1-start";
+    const endKey = "round1-end";
+    if (actionBusyRef.current[startKey] || actionBusyRef.current[endKey]) return;
+    if (roundIsRunning !== roundStartedRef.current) {
+      updateUI(roundIsRunning);
+    }
+  }, [roundIsRunning, updateUI]);
+
+  const launchRound = useCallback(async () => {
+    const startKey = "round1-start";
+    if (roundStartedRef.current) return;
+    if (actionBusyRef.current[startKey]) return;
+
+    updateUI(true);
+    const ok = await handleRoundAction("start", 1, undefined, startKey);
+    if (!ok) {
+      updateUI(false);
+    }
+  }, [handleRoundAction, updateUI]);
+
+  const endRound = useCallback(async () => {
+    const endKey = "round1-end";
+    if (!roundStartedRef.current) return;
+    if (actionBusyRef.current[endKey]) return;
+
+    updateUI(false);
+    const ok = await handleRoundAction("end", 1, undefined, endKey);
+    if (!ok) {
+      updateUI(true);
+    }
+  }, [handleRoundAction, updateUI]);
+
+  useEffect(() => {
+    const launchBtn = launchRoundButtonRef.current;
+    const endBtn = endRoundButtonRef.current;
+    if (!launchBtn || !endBtn) return;
+
+    const onLaunchClick = (event: MouseEvent) => {
+      event.preventDefault();
+      void launchRound();
+    };
+    const onEndClick = (event: MouseEvent) => {
+      event.preventDefault();
+      void endRound();
+    };
+
+    launchBtn.addEventListener("click", onLaunchClick);
+    endBtn.addEventListener("click", onEndClick);
+    return () => {
+      launchBtn.removeEventListener("click", onLaunchClick);
+      endBtn.removeEventListener("click", onEndClick);
+    };
+  }, [endRound, launchRound]);
 
 
   const handleRemoveTeam = async (teamId: string, busyKey?: string) => {
@@ -533,7 +630,7 @@ export default function AdminDashboardPage() {
               </div>
             </div>
             {(() => {
-              const r1 = rounds.find(r => (r.round_number ?? 0) === 1) || {
+              const r1 = round1 || {
                 round_number: 1,
                 status: "waiting",
                 duration_seconds: 180,
@@ -541,6 +638,7 @@ export default function AdminDashboardPage() {
               };
               const isActive = r1.status === "active";
               const isEnded = r1.status === "ended";
+              const launched = roundStarted;
               const remaining = getLiveRemaining(r1 as RoundRecord);
               const total = r1.duration_seconds ?? 180;
               const pct = Math.max(0, (remaining ?? total) / total);
@@ -573,18 +671,22 @@ export default function AdminDashboardPage() {
 
                   <div className="admin-action-grid mt-6 gap-4">
                     <button
-                      className="admin-action-button button-success cursor-pointer scale-105 shadow-emerald-500/20 shadow-lg"
+                      ref={launchRoundButtonRef}
+                      className={
+                        launched
+                          ? "admin-action-button button-success opacity-70 cursor-not-allowed"
+                          : "admin-action-button button-success cursor-pointer scale-105 shadow-emerald-500/20 shadow-lg"
+                      }
                       style={{ background: "#10b981", color: "#062016", border: "none", fontWeight: 800 }}
-                      onClick={() => handleRoundAction("start", 1, undefined, startKey)}
-                      disabled={isActive || startBusy}
+                      disabled={launched || startBusy}
                     >
-                      {startBusy ? "INITIALIZING..." : "▶ LAUNCH ROUND 1"}
+                      {startBusy ? "INITIALIZING..." : launched ? "Launched" : "▶ LAUNCH ROUND 1"}
                     </button>
                     <button
+                      ref={endRoundButtonRef}
                       className="admin-action-button button-danger cursor-pointer scale-105 shadow-rose-500/20 shadow-lg"
                       style={{ background: "#ef4444", color: "#3e0a0a", border: "none", fontWeight: 800 }}
-                      onClick={() => handleRoundAction("end", 1, undefined, endKey)}
-                      disabled={!isActive || endBusy}
+                      disabled={!launched || endBusy}
                     >
                       {endBusy ? "TERMINATING..." : "⏹ END ROUND 1"}
                     </button>

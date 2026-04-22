@@ -69,8 +69,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   }
 
-  const basePoints = roundData?.base_points ?? box?.points_value ?? 0;
-
   const { data: team } = await supabase
     .from("teams")
     .select("score, consecutive_correct")
@@ -78,44 +76,47 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   const currentScore = team?.score ?? 0;
-  const currentStreak = team?.consecutive_correct ?? 0;
+
+  const parseSubmitted = (raw: unknown): { points: number; hasComputedPoints: boolean } => {
+    if (typeof raw !== "string") return { points: 0, hasComputedPoints: false };
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith("{")) return { points: 0, hasComputedPoints: false };
+    try {
+      const parsed = JSON.parse(trimmed) as { points?: unknown; answers?: unknown };
+
+      if (typeof parsed.points === "number" && Number.isFinite(parsed.points)) {
+        return { points: parsed.points, hasComputedPoints: true };
+      }
+
+      if (Array.isArray(parsed.answers)) {
+        const safeAnswers = parsed.answers
+          .filter((value: unknown): value is boolean => typeof value === "boolean")
+          .slice(0, 200);
+        let points = 0;
+        let streak = 0;
+        for (const isCorrect of safeAnswers) {
+          if (isCorrect) {
+            streak += 1;
+            points += Math.min(streak * 10, 30);
+          } else {
+            points -= 3;
+            streak = 0;
+          }
+        }
+        return { points, hasComputedPoints: true };
+      }
+
+      return { points: 0, hasComputedPoints: false };
+    } catch {
+      return { points: 0, hasComputedPoints: false };
+    }
+  };
+
+  const computed = parseSubmitted(openRecord.submitted_answer);
 
   if (status === "approved") {
-    const newStreak = currentStreak + 1;
-    const streakBonus = Math.max(0, newStreak - 2);
-    const pointsAwarded = basePoints + streakBonus;
+    const pointsAwarded = computed.hasComputedPoints ? computed.points : 0;
     const updatedScore = Math.max(0, currentScore + pointsAwarded);
-
-    await supabase
-      .from("teams")
-      .update({
-        score: updatedScore,
-        consecutive_correct: newStreak,
-      })
-      .eq("id", openRecord.team_id);
-
-    if (openRecord.round_id) {
-      const { data: teamRound } = await supabase
-        .from("team_rounds")
-        .select("*")
-        .eq("team_id", openRecord.team_id)
-        .eq("round_id", openRecord.round_id)
-        .maybeSingle();
-
-      if (teamRound) {
-        await supabase
-          .from("team_rounds")
-          .update({
-            score_this_round: (teamRound.score_this_round ?? 0) + pointsAwarded,
-          })
-          .eq("id", teamRound.id);
-      }
-    }
-  }
-
-  if (status === "rejected") {
-    const penalty = Math.floor(basePoints / 4);
-    const updatedScore = Math.max(0, currentScore - penalty);
 
     await supabase
       .from("teams")
@@ -137,14 +138,19 @@ export async function POST(request: NextRequest) {
         await supabase
           .from("team_rounds")
           .update({
-            score_this_round: Math.max(
-              0,
-              (teamRound.score_this_round ?? 0) - penalty,
-            ),
+            score_this_round: Math.max(0, (teamRound.score_this_round ?? 0) + pointsAwarded),
           })
           .eq("id", teamRound.id);
       }
     }
+  }
+
+  if (status === "rejected") {
+    // No automatic point deductions; rejection only resets any legacy streak counter.
+    await supabase
+      .from("teams")
+      .update({ consecutive_correct: 0 })
+      .eq("id", openRecord.team_id);
   }
 
   return NextResponse.json({ success: true });

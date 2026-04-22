@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { GAME_CONFIGS, getMiniGameConfig, MiniGameRenderer } from "@/app/team/game-panels";
 import { playSound } from "@/lib/sound-manager";
@@ -29,10 +29,13 @@ type BoxOpen = {
   opened_at?: string | null;
 };
 
+type GameStatus = "idle" | "running" | "ended";
+
 export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedded = false }: { boxId?: string; onGameComplete?: () => void; embedded?: boolean }) {
   const GAME_CAP_SECONDS = 180;
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const boxId = overrideBoxId || (typeof params?.boxId === "string" ? params.boxId : "");
   const [teamId, setTeamId] = useState<string | null>(null);
   const [game, setGame] = useState<GameRecord | null>(null);
@@ -41,17 +44,24 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [gameStatus, setGameStatus] = useState<GameStatus>("idle");
+  const timerIdRef = useRef<number | null>(null);
+  const timeLeftRef = useRef(GAME_CAP_SECONDS);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
+  const [wrongCount, setWrongCount] = useState(0);
   const [scoreInput, setScoreInput] = useState(0);
   const [streakCount, setStreakCount] = useState(0);
+  const [answers, setAnswers] = useState<boolean[]>([]);
   const [questionSeedBase, setQuestionSeedBase] = useState("seed");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [leaveWarning, setLeaveWarning] = useState(false);
   const submittedRef = useRef(false);
   const answeredRef = useRef(false);
   const streakRef = useRef(0);
+  const scoreRef = useRef(0);
   const leavePenaltyRef = useRef(false);
+  const startTokenConsumedRef = useRef(false);
 
 
   const progressStorageKey = useMemo(() => {
@@ -83,6 +93,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
         gameId?: string;
         questionIndex?: number;
         correctCount?: number;
+        wrongCount?: number;
         scoreInput?: number;
         streakCount?: number;
         questionSeedBase?: string;
@@ -94,6 +105,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
 
       setQuestionIndex(typeof parsed.questionIndex === "number" ? parsed.questionIndex : 0);
       setCorrectCount(typeof parsed.correctCount === "number" ? parsed.correctCount : 0);
+      setWrongCount(typeof parsed.wrongCount === "number" ? parsed.wrongCount : 0);
       setScoreInput(typeof parsed.scoreInput === "number" ? parsed.scoreInput : 0);
       setStreakCount(typeof parsed.streakCount === "number" ? parsed.streakCount : 0);
       setQuestionSeedBase(
@@ -162,18 +174,21 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
     streakRef.current = streakCount;
   }, [streakCount]);
 
-  const handleAnswer = (result: { success: boolean; details: string }) => {
+  const handleAnswer = (isCorrect: boolean, details: string) => {
+    if (gameStatus !== "running") return;
     if (answeredRef.current) return;
     answeredRef.current = true;
-    if (result.success) {
+
+    if (isCorrect) {
       playSound("correct_r1");
       const nextStreak = streakRef.current + 1;
-      const multiplier = Math.min(3, nextStreak);
-      const gained = 10 * multiplier;
+      const bonus = Math.min(nextStreak * 10, 30);
       setCorrectCount((prev) => prev + 1);
       setStreakCount(nextStreak);
-      setScoreInput((prev) => prev + gained);
-      setFeedback(`Correct +${gained}`);
+      streakRef.current = nextStreak;
+      scoreRef.current += bonus;
+      setScoreInput(scoreRef.current);
+      setFeedback(`Correct +${bonus}`);
     } else {
       const hadMajorStreak = streakRef.current >= 3;
       playSound("wrong_r1");
@@ -181,19 +196,25 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
         window.setTimeout(() => playSound("round1_streak_defeated"), 100);
       }
       const penalty = 3;
+      streakRef.current = 0;
       setStreakCount(0);
-      setScoreInput((prev) => prev - penalty);
+      setWrongCount((prev) => prev + 1);
+      scoreRef.current -= penalty;
+      setScoreInput(scoreRef.current);
       setFeedback(
         hadMajorStreak
-          ? result.details === "skipped"
+          ? details === "skipped"
             ? "Streak defeated (skip) -3"
             : "Streak defeated -3"
-          : result.details === "skipped"
+          : details === "skipped"
             ? "Skipped -3"
             : "Wrong -3",
       );
     }
+
+    setAnswers((prev) => [...prev, isCorrect]);
     setQuestionIndex((prev) => prev + 1);
+    console.log("Actual Score:", scoreRef.current, "Streak:", streakRef.current);
   };
 
   useEffect(() => {
@@ -204,6 +225,105 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
     }
     setTeamId(storedTeamId);
   }, [router]);
+
+  const stopTimer = useCallback(() => {
+    if (timerIdRef.current) {
+      window.clearInterval(timerIdRef.current);
+      timerIdRef.current = null;
+    }
+  }, []);
+
+  const endGame = useCallback(async () => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
+    stopTimer();
+    setGameStatus("ended");
+    setSubmitting(true);
+
+    if (!teamId || !game?.id) {
+      setSubmitting(false);
+      clearProgressSnapshot();
+      router.replace("/leaderboard");
+      return;
+    }
+
+    try {
+      let sessionResponse = await supabaseBrowser.auth.getSession();
+      if (!sessionResponse.data.session) {
+        await supabaseBrowser.auth.refreshSession();
+        sessionResponse = await supabaseBrowser.auth.getSession();
+      }
+
+      if (!sessionResponse.data.session) {
+        setSubmitting(false);
+        router.replace("/auth?redirect=/leaderboard");
+        return;
+      }
+
+      await fetch("/api/boxes/complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionResponse.data.session.access_token}`,
+        },
+        body: JSON.stringify({
+          teamId,
+          boxId: game.id,
+          correctCount,
+          wrongCount,
+          scoreInput: scoreRef.current,
+          answers,
+          details: `${correctCount} correct, ${wrongCount} wrong`,
+        }),
+      });
+    } catch {
+      // Best effort; still proceed to leaderboard.
+    }
+
+    setSubmitting(false);
+    clearProgressSnapshot();
+    router.replace("/leaderboard");
+  }, [answers, clearProgressSnapshot, correctCount, game?.id, router, scoreInput, stopTimer, teamId, wrongCount]);
+
+  const startTimer = useCallback(() => {
+    stopTimer();
+    timeLeftRef.current = GAME_CAP_SECONDS;
+    setTimeLeft(GAME_CAP_SECONDS);
+    console.log("Timer started at:", timeLeftRef.current);
+    timerIdRef.current = window.setInterval(() => {
+      timeLeftRef.current = Math.max(0, timeLeftRef.current - 1);
+      setTimeLeft(timeLeftRef.current);
+
+      if (timeLeftRef.current <= 0) {
+        stopTimer();
+        window.setTimeout(() => {
+          void endGame();
+        }, 0);
+      }
+    }, 1000);
+  }, [endGame, stopTimer]);
+
+  const startGame = useCallback(() => {
+    stopTimer();
+    timeLeftRef.current = GAME_CAP_SECONDS;
+    setTimeLeft(GAME_CAP_SECONDS);
+    console.log("Timer reset to:", timeLeftRef.current);
+    setGameStatus("running");
+    setQuestionIndex(0);
+    setCorrectCount(0);
+    setWrongCount(0);
+    scoreRef.current = 0;
+    streakRef.current = 0;
+    setScoreInput(0);
+    setStreakCount(0);
+    setAnswers([]);
+    console.log("Actual Score:", scoreRef.current);
+    setQuestionSeedBase(`${Date.now()}-${Math.random()}`);
+    setFeedback(null);
+    submittedRef.current = false;
+    answeredRef.current = false;
+    startTimer();
+  }, [startTimer, stopTimer]);
 
   useEffect(() => {
     if (!teamId) return;
@@ -225,20 +345,19 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
       setGame(payload.game);
       setRound(payload.round ?? null);
       setOpen(payload.open ?? null);
-      const restored = restoreProgressSnapshot(payload.open?.id, payload.game.id);
-      if (!restored) {
-        setQuestionIndex(0);
-        setCorrectCount(0);
-        setScoreInput(0);
-        setStreakCount(0);
-        setQuestionSeedBase(`${Date.now()}-${Math.random()}`);
-        setFeedback(null);
-        submittedRef.current = false;
-        answeredRef.current = false;
+      const canAutoStart = searchParams?.get("start") === "1";
+      if (canAutoStart && !startTokenConsumedRef.current && payload.round?.status === "active" && payload.open?.status === "pending") {
+        startTokenConsumedRef.current = true;
+        startGame();
+      } else {
+        stopTimer();
+        setGameStatus("idle");
+        timeLeftRef.current = GAME_CAP_SECONDS;
+        setTimeLeft(GAME_CAP_SECONDS);
       }
     };
     load();
-  }, [teamId, boxId, progressStorageKey]);
+  }, [teamId, boxId, progressStorageKey, searchParams, startGame, stopTimer]);
 
   useEffect(() => {
     if (!progressStorageKey || !open?.id || !game?.id) return;
@@ -250,8 +369,10 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
         gameId: game.id,
         questionIndex,
         correctCount,
+        wrongCount,
         scoreInput,
         streakCount,
+        answers,
         questionSeedBase,
       }),
     );
@@ -263,8 +384,10 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
     round?.status,
     questionIndex,
     correctCount,
+    wrongCount,
     scoreInput,
     streakCount,
+    answers,
     questionSeedBase,
   ]);
 
@@ -277,75 +400,11 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
     answeredRef.current = false;
   }, [questionIndex, round?.status, open?.id, open?.status]);
 
-  const [nowTime, setNowTime] = useState(() => Date.now());
-
   useEffect(() => {
-    const id = window.setInterval(() => setNowTime(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const getLiveRemaining = useCallback(() => {
-    const duration = GAME_CAP_SECONDS;
-    if (round?.status === "ended") return 0;
-    if (open?.opened_at) {
-      const openedAt = new Date(open.opened_at).getTime();
-      const elapsedLive = Math.floor((nowTime - openedAt) / 1000);
-      return Math.max(0, duration - elapsedLive);
-    }
-    return duration;
-  }, [open, round, nowTime]);
-
-  useEffect(() => {
-    const remaining = getLiveRemaining();
-    setTimeLeft(remaining);
-  }, [getLiveRemaining]);
-
-  useEffect(() => {
-    if (timeLeft === null) return;
-    if (timeLeft > 0) return;
-    if (submittedRef.current || !teamId || !game) {
-      router.replace("/team");
-      return;
-    }
-    const submitOnTimeout = async () => {
-      submittedRef.current = true;
-      setSubmitting(true);
-
-      let sessionResponse = await supabaseBrowser.auth.getSession();
-      if (!sessionResponse.data.session) {
-        await supabaseBrowser.auth.refreshSession();
-        sessionResponse = await supabaseBrowser.auth.getSession();
-      }
-
-      if (!sessionResponse.data.session) {
-        setSubmitting(false);
-        router.replace("/auth?redirect=/team");
-        return;
-      }
-      const response = await fetch("/api/boxes/complete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${sessionResponse.data.session.access_token}`,
-        },
-        body: JSON.stringify({
-          teamId,
-          boxId: game.id,
-          details: `${correctCount} correct`,
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        setError(payload.error ?? "Unable to submit score");
-        setSubmitting(false);
-        return;
-      }
-      setSubmitting(false);
-      clearProgressSnapshot();
-      router.replace("/team");
+    return () => {
+      stopTimer();
     };
-    submitOnTimeout();
-  }, [timeLeft, teamId, game, correctCount, router, scoreInput]);
+  }, [stopTimer]);
 
   useEffect(() => {
     // Monitoring disabled for unhindered production experience.
@@ -367,6 +426,14 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
 
   return (
     <main className={embedded ? "w-full flex-1" : "page-shell min-h-screen"}>
+      {gameStatus === "ended" && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-6" style={{ backgroundColor: "rgba(0,0,0,0.92)" }}>
+          <div className="card max-w-lg w-full text-center space-y-3">
+            <p className="label">GAME OVER</p>
+            <p className="text-sm text-slate-300">Time expired. Redirecting to leaderboard...</p>
+          </div>
+        </div>
+      )}
       {leaveWarning && (
         <div className="banner ended">
           Leaving the game suspended your team. Only an admin can resume it.
@@ -424,15 +491,15 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
             gameKey={resolvedGameKey}
             seed={`${questionSeedBase}-${open?.id ?? "seed"}-${game?.id ?? ""}`}
             questionIndex={questionIndex}
-            disabled={submitting || answeredRef.current}
+            disabled={gameStatus !== "running" || submitting || answeredRef.current}
             onComplete={(result) => {
               if (!teamId || !game) return;
-              handleAnswer(result);
+              handleAnswer(result.success, result.details);
             }}
           />
         )}
 
-        {!submitting && round?.status === "active" && open?.status === "pending" && (
+        {!submitting && gameStatus === "running" && round?.status === "active" && open?.status === "pending" && (
           <button
             className="button-secondary"
             style={{
@@ -444,7 +511,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
               opacity: 0.7,
             }}
             onClick={() => {
-              handleAnswer({ success: false, details: "skipped" });
+              handleAnswer(false, "skipped");
             }}
           >
             SKIP INPUT (-3)

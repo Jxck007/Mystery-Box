@@ -61,7 +61,7 @@ export default function LeaderboardPage() {
     };
   }, [router]);
 
-  const fetchLeaderboard = useCallback(async () => {
+  const updateLeaderboard = useCallback(async () => {
     setLoading(true);
 
     const response = await fetch("/api/leaderboard", { cache: "no-store" });
@@ -91,26 +91,26 @@ export default function LeaderboardPage() {
         }
 
         setCheckedSession(true);
-        await fetchLeaderboard();
+        await updateLeaderboard();
       });
     }, 0);
     return () => window.clearTimeout(id);
-  }, [fetchLeaderboard, router]);
+  }, [updateLeaderboard, router]);
 
   useEffect(() => {
     const teamsChannel = supabaseBrowser
       .channel("leaderboard-teams")
-      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, fetchLeaderboard)
+      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, updateLeaderboard)
       .subscribe();
 
     const playersChannel = supabaseBrowser
       .channel("leaderboard-players")
-      .on("postgres_changes", { event: "*", schema: "public", table: "players" }, fetchLeaderboard)
+      .on("postgres_changes", { event: "*", schema: "public", table: "players" }, updateLeaderboard)
       .subscribe();
 
     const roundsChannel = supabaseBrowser
       .channel("leaderboard-rounds")
-      .on("postgres_changes", { event: "*", schema: "public", table: "rounds" }, fetchLeaderboard)
+      .on("postgres_changes", { event: "*", schema: "public", table: "rounds" }, updateLeaderboard)
       .subscribe();
 
     return () => {
@@ -118,14 +118,14 @@ export default function LeaderboardPage() {
       supabaseBrowser.removeChannel(playersChannel);
       supabaseBrowser.removeChannel(roundsChannel);
     };
-  }, [fetchLeaderboard]);
+  }, [updateLeaderboard]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      fetchLeaderboard();
+      updateLeaderboard();
     }, 4000);
     return () => window.clearInterval(intervalId);
-  }, [fetchLeaderboard]);
+  }, [updateLeaderboard]);
 
   if (!checkedSession) {
     return (

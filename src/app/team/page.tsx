@@ -69,7 +69,7 @@ type SessionData = {
   isLeader: boolean;
 };
 
-type UnlockFlow = "locked" | "unlocked" | "preparing" | "playingVideo" | "revealReward" | "playingGame";
+type UnlockFlow = "locked" | "unlocked" | "preparing" | "playingVideo" | "playingGame";
 
 const UNLOCK_VIDEO_SRC = "/unlock-sequence.mp4";
 const PUBLIC_GAME_LABEL = "MYSTERY GAMES";
@@ -93,13 +93,6 @@ export default function TeamDashboardPage() {
   const [round, setRound] = useState<RoundRecord | null>(null);
   const [boxes, setBoxes] = useState<GameRecord[]>([]);
   const redirectingRef = useRef(false);
-
-  useEffect(() => {
-    if (round?.round_number === 1 && round?.status === "active" && currentOpen && currentOpen.opened_at && boxes.length > 0 && !redirectingRef.current) {
-      redirectingRef.current = true;
-      router.push(`/game/${boxes[0].id}`);
-    }
-  }, [round?.status, round?.round_number, currentOpen, boxes, router]);
 
   const [events, setEvents] = useState<TeamEvent[]>([]);
   const [edgeToast, setEdgeToast] = useState<TeamEvent | null>(null);
@@ -344,10 +337,12 @@ export default function TeamDashboardPage() {
 
 
 
-  const handleStartMission = async () => {
+  const handleVideoEnded = async () => {
     if (!session || !revealedGame) return;
-    setBriefingBusy(true);
+    if (redirectingRef.current) return;
+    redirectingRef.current = true;
 
+    setBriefingBusy(true);
     playSound("start_r1");
 
     try {
@@ -361,15 +356,11 @@ export default function TeamDashboardPage() {
     }
 
     setBriefingBusy(false);
-    setUnlockFlow("unlocked");
-    
-    // Explicitly update currentOpen's opened_at to allow immediate rendering
-    if (currentOpen && !currentOpen.opened_at) {
-      setCurrentOpen(prev => prev ? { ...prev, opened_at: new Date().toISOString() } : null);
-    }
-    
+    setShowUnlockVideo(false);
+    setUnlockFlow("playingGame");
+
     const id = encodeURIComponent(revealedGame.id);
-    router.push(`/game/${id}`);
+    router.push(`/game/${id}?start=1`);
   };
 
   const formatTime = useCallback((seconds: number | null | undefined) => {
@@ -653,36 +644,20 @@ export default function TeamDashboardPage() {
                 disabled={unlockFlow !== "unlocked"}
                 isClicked={unlockFlow !== "unlocked"}
                 videoPreviewSrc={UNLOCK_VIDEO_SRC}
-                isPlaying={showUnlockVideo || unlockFlow === "revealReward"}
+                isPlaying={showUnlockVideo}
                 gameTitle={PUBLIC_GAME_LABEL}
                 onEnded={() => {
-
-                  setUnlockFlow("revealReward");
+                  void handleVideoEnded();
                 }}
                 onOpen={() => {
                   void handleBoxClick();
                 }}
               >
-                <AnimatePresence>
-                  {unlockFlow === "revealReward" && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      transition={{ duration: 0.7, delay: 0.8 }}
-                      className="absolute inset-x-0 bottom-3 sm:bottom-6 z-50 flex flex-col items-center justify-end pointer-events-none"
-                    >
-                      <button
-                        type="button"
-                        className="button-primary scale-110 shadow-[0_0_40px_rgba(180,255,57,0.4)] pointer-events-auto"
-                        style={{ border: "2px solid rgba(180,255,57,0.7)" }}
-                        onClick={() => void handleStartMission()}
-                        disabled={briefingBusy}
-                      >
-                        {briefingBusy ? "STARTING..." : "START"}
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                {briefingBusy && (
+                  <div className="absolute inset-x-0 bottom-4 z-50 flex justify-center pointer-events-none">
+                    <div className="banner paused pointer-events-none">Starting mission...</div>
+                  </div>
+                )}
               </MysteryBox>
             </div>
             )}

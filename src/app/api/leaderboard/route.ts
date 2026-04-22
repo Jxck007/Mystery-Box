@@ -16,21 +16,11 @@ export async function GET(request: Request) {
 
   const { data: opens, error: opensError } = await supabase
     .from("box_opens")
-    .select("team_id, box_id, status");
+    .select("team_id, status, submitted_answer");
 
   if (opensError) {
     return NextResponse.json({ error: opensError.message }, { status: 500 });
   }
-
-  const { data: boxes, error: boxError } = await supabase
-    .from("mystery_boxes")
-    .select("id, points_value");
-
-  if (boxError) {
-    return NextResponse.json({ error: boxError.message }, { status: 500 });
-  }
-
-  const boxPoints = new Map<string, number>((boxes ?? []).map((box) => [box.id, box.points_value ?? 0]));
 
   const memberCounts = players?.reduce<Record<string, number>>((acc, player) => {
     if (!player) return acc;
@@ -39,22 +29,37 @@ export async function GET(request: Request) {
     return acc;
   }, {}) ?? {};
 
-  const teamStats = (opens ?? []).reduce<
-    Record<string, { correct_count: number; wrong_count: number; calculated_score: number }>
-  >((acc, open) => {
+  const teamStats = (opens ?? []).reduce<Record<string, { correct_count: number; wrong_count: number }>>((acc, open) => {
     if (!open?.team_id) return acc;
     const teamId = open.team_id;
     if (!acc[teamId]) {
-      acc[teamId] = { correct_count: 0, wrong_count: 0, calculated_score: 0 };
+      acc[teamId] = { correct_count: 0, wrong_count: 0 };
     }
 
-    const basePoints = boxPoints.get(open.box_id) ?? 0;
+    // Prefer per-question stats stored in submitted_answer JSON (Round 1 auto scoring).
+    if (typeof open.submitted_answer === "string" && open.submitted_answer.trim().startsWith("{")) {
+      try {
+        const parsed = JSON.parse(open.submitted_answer) as { correct?: unknown; wrong?: unknown };
+        const parsedCorrect =
+          typeof parsed.correct === "number" && Number.isFinite(parsed.correct)
+            ? Math.max(0, Math.floor(parsed.correct))
+            : 0;
+        const parsedWrong =
+          typeof parsed.wrong === "number" && Number.isFinite(parsed.wrong)
+            ? Math.max(0, Math.floor(parsed.wrong))
+            : 0;
+        acc[teamId].correct_count += parsedCorrect;
+        acc[teamId].wrong_count += parsedWrong;
+        return acc;
+      } catch {
+        // fall back to status-based counts
+      }
+    }
+
     if (open.status === "approved") {
       acc[teamId].correct_count += 1;
-      acc[teamId].calculated_score += basePoints;
     } else if (open.status === "rejected") {
       acc[teamId].wrong_count += 1;
-      acc[teamId].calculated_score -= Math.floor(basePoints / 4);
     }
 
     return acc;
@@ -65,7 +70,7 @@ export async function GET(request: Request) {
     member_count: memberCounts[team.id] ?? 0,
     correct_count: teamStats[team.id]?.correct_count ?? 0,
     wrong_count: teamStats[team.id]?.wrong_count ?? 0,
-    score: Math.max(0, teamStats[team.id]?.calculated_score ?? 0),
+    score: Math.max(0, team.score ?? 0),
   }));
 
   const sorted = enriched.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
