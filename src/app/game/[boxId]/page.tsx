@@ -25,6 +25,7 @@ type RoundRecord = {
 
 type BoxOpen = {
   id: string;
+  box_id?: string;
   status: "pending" | "approved" | "rejected";
   opened_at?: string | null;
 };
@@ -41,10 +42,11 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
   const [game, setGame] = useState<GameRecord | null>(null);
   const [round, setRound] = useState<RoundRecord | null>(null);
   const [open, setOpen] = useState<BoxOpen | null>(null);
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number>(GAME_CAP_SECONDS);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [gameStatus, setGameStatus] = useState<GameStatus>("idle");
+  const gameStatusRef = useRef<GameStatus>("idle");
   const timerIdRef = useRef<number | null>(null);
   const timeLeftRef = useRef(GAME_CAP_SECONDS);
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -61,7 +63,9 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
   const streakRef = useRef(0);
   const scoreRef = useRef(0);
   const leavePenaltyRef = useRef(false);
-  const startTokenConsumedRef = useRef(false);
+  const startedOpenIdRef = useRef<string | null>(null);
+  const startRequestConsumedRef = useRef(false);
+  const startRetryCountRef = useRef(0);
 
 
   const progressStorageKey = useMemo(() => {
@@ -124,7 +128,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
 
 
   const totalSeconds = GAME_CAP_SECONDS;
-  const safeTimeLeft = timeLeft ?? totalSeconds;
+  const safeTimeLeft = timeLeft;
   const progressPercent = totalSeconds
     ? Math.max(0, Math.min(100, (safeTimeLeft / totalSeconds) * 100))
     : 0;
@@ -137,6 +141,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
       .filter(Boolean)
       .map((part) => `${part}.`);
   }, [game?.game_description]);
+  const showGameScreen = gameStatus === "running" || gameStatus === "ended";
 
   const isRoundOne = round?.round_number === 1;
 
@@ -173,6 +178,10 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
   useEffect(() => {
     streakRef.current = streakCount;
   }, [streakCount]);
+
+  useEffect(() => {
+    gameStatusRef.current = gameStatus;
+  }, [gameStatus]);
 
   const handleAnswer = (isCorrect: boolean, details: string) => {
     if (gameStatus !== "running") return;
@@ -237,6 +246,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
     if (submittedRef.current) return;
     submittedRef.current = true;
     stopTimer();
+    gameStatusRef.current = "ended";
     setGameStatus("ended");
     setSubmitting(true);
 
@@ -286,28 +296,39 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
   }, [answers, clearProgressSnapshot, correctCount, game?.id, router, scoreInput, stopTimer, teamId, wrongCount]);
 
   const startTimer = useCallback(() => {
-    stopTimer();
-    timeLeftRef.current = GAME_CAP_SECONDS;
-    setTimeLeft(GAME_CAP_SECONDS);
-    console.log("Timer started at:", timeLeftRef.current);
+    if (timerIdRef.current) {
+      window.clearInterval(timerIdRef.current);
+      timerIdRef.current = null;
+    }
+    timeLeftRef.current = 180;
+    setTimeLeft(180);
+    console.log("Timer started");
+    console.log("Timer reset to:", timeLeftRef.current);
     timerIdRef.current = window.setInterval(() => {
       timeLeftRef.current = Math.max(0, timeLeftRef.current - 1);
+      console.log("Time running:", timeLeftRef.current);
+      console.log("Timer:", timeLeftRef.current);
       setTimeLeft(timeLeftRef.current);
 
       if (timeLeftRef.current <= 0) {
-        stopTimer();
+        if (timerIdRef.current) {
+          window.clearInterval(timerIdRef.current);
+          timerIdRef.current = null;
+        }
         window.setTimeout(() => {
           void endGame();
         }, 0);
       }
     }, 1000);
-  }, [endGame, stopTimer]);
+  }, [endGame]);
 
-  const startGame = useCallback(() => {
+  const startGame = useCallback((openId: string) => {
+    if (startedOpenIdRef.current && startedOpenIdRef.current === openId) {
+      return;
+    }
     stopTimer();
-    timeLeftRef.current = GAME_CAP_SECONDS;
-    setTimeLeft(GAME_CAP_SECONDS);
-    console.log("Timer reset to:", timeLeftRef.current);
+    console.log("Game started");
+    gameStatusRef.current = "running";
     setGameStatus("running");
     setQuestionIndex(0);
     setCorrectCount(0);
@@ -322,6 +343,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
     setFeedback(null);
     submittedRef.current = false;
     answeredRef.current = false;
+    startedOpenIdRef.current = openId;
     startTimer();
   }, [startTimer, stopTimer]);
 
@@ -345,19 +367,62 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
       setGame(payload.game);
       setRound(payload.round ?? null);
       setOpen(payload.open ?? null);
-      const canAutoStart = searchParams?.get("start") === "1";
-      if (canAutoStart && !startTokenConsumedRef.current && payload.round?.status === "active" && payload.open?.status === "pending") {
-        startTokenConsumedRef.current = true;
-        startGame();
-      } else {
-        stopTimer();
-        setGameStatus("idle");
-        timeLeftRef.current = GAME_CAP_SECONDS;
-        setTimeLeft(GAME_CAP_SECONDS);
+
+      // Hard guard: never reset timer/UI while a game is already running.
+      // Backend refreshes can briefly return transitional payloads that should
+      // not interrupt an active local countdown.
+      if (gameStatusRef.current === "running") {
+        return;
       }
+
+      const incomingOpenId = payload.open?.id ?? null;
+      const runningSameOpen =
+        gameStatusRef.current === "running" &&
+        Boolean(incomingOpenId) &&
+        startedOpenIdRef.current === incomingOpenId;
+
+      if (runningSameOpen) {
+        return;
+      }
+
+      const startRequested = searchParams?.get("start") === "1";
+      if (startRequested && !payload.open?.id && startRetryCountRef.current < 8) {
+        startRetryCountRef.current += 1;
+        window.setTimeout(() => {
+          void load();
+        }, 300);
+        return;
+      }
+
+      const canStartFromStartButton =
+        startRequested &&
+        !startRequestConsumedRef.current &&
+        Boolean(payload.open?.id);
+
+      console.log("Start gate:", {
+        startRequested,
+        consumed: startRequestConsumedRef.current,
+        roundStatus: payload.round?.status ?? null,
+        openStatus: payload.open?.status ?? null,
+        openId: payload.open?.id ?? null,
+      });
+
+      if (canStartFromStartButton && payload.open) {
+        startRequestConsumedRef.current = true;
+        startRetryCountRef.current = 0;
+        startGame(payload.open.id);
+        // Consume the one-time start signal to avoid re-trigger on remount.
+        router.replace(`/game/${encodeURIComponent(boxId)}`);
+        return;
+      }
+
+      stopTimer();
+      gameStatusRef.current = "idle";
+      setGameStatus("idle");
+      startedOpenIdRef.current = null;
     };
     load();
-  }, [teamId, boxId, progressStorageKey, searchParams, startGame, stopTimer]);
+  }, [teamId, boxId, progressStorageKey, router, searchParams, startGame, stopTimer]);
 
   useEffect(() => {
     if (!progressStorageKey || !open?.id || !game?.id) return;
@@ -396,9 +461,9 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
   }, [game?.id]);
 
   useEffect(() => {
-    if (round?.status !== "active" || open?.status !== "pending") return;
+    if (gameStatus !== "running") return;
     answeredRef.current = false;
-  }, [questionIndex, round?.status, open?.id, open?.status]);
+  }, [questionIndex, gameStatus]);
 
   useEffect(() => {
     return () => {
@@ -439,6 +504,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
           Leaving the game suspended your team. Only an admin can resume it.
         </div>
       )}
+      {showGameScreen && (
       <header className="card flex-row items-start justify-between gap-4">
         <div className="space-y-2">
           {!embedded && (
@@ -465,8 +531,17 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
           </div>
         </div>
       </header>
+      )}
 
-      <section className="card space-y-4">
+      {!showGameScreen && (
+        <section className="card space-y-3">
+          <p className="label">GAME_READY</p>
+          <p className="text-sm text-slate-300">Waiting for Start button confirmation...</p>
+          <div id="gameScreen" style={{ display: "none" }} />
+        </section>
+      )}
+      {showGameScreen && (
+      <section className="card space-y-4" id="gameScreen">
         <div className="section-tag">GAME_TYPE: {miniGameConfig?.key ?? "QUIZ"}</div>
         <div className="game-warning">
           <p className="text-sm text-[var(--text-muted)]">
@@ -486,12 +561,12 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
           Question {questionIndex + 1}
         </div>
 
-        {isRoundOne && miniGameConfig && open?.status === "pending" && (
+        {isRoundOne && miniGameConfig && open?.status === "pending" && gameStatus === "running" && (
           <MiniGameRenderer
             gameKey={resolvedGameKey}
             seed={`${questionSeedBase}-${open?.id ?? "seed"}-${game?.id ?? ""}`}
             questionIndex={questionIndex}
-            disabled={gameStatus !== "running" || submitting || answeredRef.current}
+            disabled={submitting || answeredRef.current}
             onComplete={(result) => {
               if (!teamId || !game) return;
               handleAnswer(result.success, result.details);
@@ -527,6 +602,7 @@ export default function GamePage({ boxId: overrideBoxId, onGameComplete, embedde
           <span className="label">CORRECT: {correctCount}</span>
         </div>
       </section>
+      )}
     </main>
   );
 }

@@ -69,7 +69,7 @@ type SessionData = {
   isLeader: boolean;
 };
 
-type UnlockFlow = "locked" | "unlocked" | "preparing" | "playingVideo" | "playingGame";
+type GameFlowState = "waiting" | "ready" | "video" | "start" | "playing" | "ended";
 
 const UNLOCK_VIDEO_SRC = "/unlock-sequence.mp4";
 const PUBLIC_GAME_LABEL = "MYSTERY GAMES";
@@ -107,9 +107,11 @@ export default function TeamDashboardPage() {
   const [revealedGame, setRevealedGame] = useState<GameRecord | null>(null);
   const [revealedOpenRecord, setRevealedOpenRecord] = useState<BoxOpen | null>(null);
   const [briefingBusy, setBriefingBusy] = useState(false);
-  const [unlockFlow, setUnlockFlow] = useState<UnlockFlow>("locked");
-  const [showUnlockVideo, setShowUnlockVideo] = useState(false);
+  const [gameState, setGameState] = useState<GameFlowState>("waiting");
+  const [videoReady, setVideoReady] = useState(false);
+  const introEndHandledRef = useRef(false);
   const [dismissedRevealOpenId, setDismissedRevealOpenId] = useState<string | null>(null);
+  const introVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const visibilityLeaveTimeRef = useRef<number | null>(null);
   const blurTimeRef = useRef<number | null>(null);
@@ -139,6 +141,12 @@ export default function TeamDashboardPage() {
     [nowTime],
   );
 
+  const isRound1Live =
+    round?.round_number === 1 &&
+    round?.status === "active" &&
+    Boolean(round?.started_at) &&
+    getLiveRemaining(round) > 0;
+
   useEffect(() => {
     const preloadLink = document.createElement("link");
     preloadLink.rel = "preload";
@@ -152,6 +160,31 @@ export default function TeamDashboardPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (gameState !== "video") return;
+    const video = introVideoRef.current;
+    if (!video) return;
+    introEndHandledRef.current = false;
+    setVideoReady(false);
+    video.preload = "auto";
+    video.load();
+    const playVideo = async () => {
+      try {
+        video.currentTime = 0;
+        await video.play();
+      } catch (err) {
+        console.error("Video play failed", err);
+        try {
+          video.muted = true;
+          await video.play();
+        } catch (retryErr) {
+          console.error("Muted video play failed", retryErr);
+        }
+      }
+    };
+    void playVideo();
+  }, [gameState]);
 
   const fetchBoxes = useCallback(async () => {
     if (!session) return;
@@ -323,28 +356,49 @@ export default function TeamDashboardPage() {
   }, [session, fetchBoxes, fetchTeam, fetchMembers]);
 
   useEffect(() => {
-    const isRoundOneUnlocked = round?.round_number === 1 && round?.status === "active";
+    const isRoundOneUnlocked = isRound1Live;
     if (!isRoundOneUnlocked) {
-      setShowUnlockVideo(false);
-      setUnlockFlow("locked");
+      setGameState(round?.status === "ended" ? "ended" : "waiting");
+      setRevealedGame(null);
+      setRevealedOpenRecord(null);
       return;
     }
 
-    if (unlockFlow === "locked") {
-      setUnlockFlow("unlocked");
+    if (gameState === "waiting" || gameState === "ended") {
+      setGameState("ready");
     }
-  }, [round, unlockFlow]);
+  }, [isRound1Live, gameState, round?.status]);
+
+  useEffect(() => {
+    if (gameState !== "start") return;
+    if (revealedGame) return;
+    if (currentGame && currentOpen?.status === "pending") {
+      setRevealedGame(currentGame);
+      setRevealedOpenRecord(currentOpen);
+    }
+  }, [currentGame, currentOpen, revealedGame, gameState]);
 
 
 
-  const handleVideoEnded = async () => {
-    if (!session || !revealedGame) return;
+  const handleVideoEnded = () => {
+    if (introEndHandledRef.current) return;
+    introEndHandledRef.current = true;
+    console.log("Video ended, showing Start button");
+    setVideoReady(false);
+    setGameState("start");
+    console.log("State:", "start");
+  };
+
+  const handleStartGameClick = async () => {
+    const gameToStart = revealedGame ?? currentGame;
+    if (gameState !== "start") return;
+    if (!session || !gameToStart) return;
     if (redirectingRef.current) return;
     redirectingRef.current = true;
+    console.log("Start button clicked");
 
     setBriefingBusy(true);
     playSound("start_r1");
-
     try {
       await fetch("/api/boxes/start", {
         method: "POST",
@@ -354,12 +408,11 @@ export default function TeamDashboardPage() {
     } catch (err) {
       console.error("Box start error:", err);
     }
-
     setBriefingBusy(false);
-    setShowUnlockVideo(false);
-    setUnlockFlow("playingGame");
+    setGameState("playing");
+    console.log("State:", "playing");
 
-    const id = encodeURIComponent(revealedGame.id);
+    const id = encodeURIComponent(gameToStart.id);
     router.push(`/game/${id}?start=1`);
   };
 
@@ -422,14 +475,15 @@ export default function TeamDashboardPage() {
     if (!session) {
       return;
     }
-    if (unlockFlow !== "unlocked" || currentOpen) {
+    if (gameState !== "ready" || currentOpen) {
       return;
     }
-    if (round && round.status !== "active") {
+    if (!isRound1Live) {
       return;
     }
 
-  setUnlockFlow("preparing");
+    setGameState("video");
+    console.log("State:", "video");
     setModalError("");
 
     setLoading(true);
@@ -451,7 +505,7 @@ export default function TeamDashboardPage() {
     const [openResult] = await Promise.all([openRequest(), wait(950)]);
 
     if (!openResult?.game || !openResult.open) {
-      setUnlockFlow("unlocked");
+      setGameState("ready");
       setLoading(false);
       return;
     }
@@ -461,9 +515,6 @@ export default function TeamDashboardPage() {
     setDismissedRevealOpenId(null);
     setRevealedGame(openResult.game);
     setRevealedOpenRecord(openResult.open);
-    setUnlockFlow("playingVideo");
-    setShowUnlockVideo(true);
-
     setLoading(false);
   };
 
@@ -486,9 +537,17 @@ export default function TeamDashboardPage() {
     return null;
   }, [round]);
 
-  const cinematicTransitionActive = unlockFlow === "preparing" || unlockFlow === "playingVideo"
   const hideDashboard = false;
   const isEliminated = Boolean(team?.eliminated_at);
+  const isRound1Active = isRound1Live;
+  const showWaitingScreen = !isRound1Active;
+  const showMysteryBoxScreen = isRound1Active;
+  const showVideoScreen = isRound1Active && gameState === "video";
+  const showStartScreen = isRound1Active && gameState === "start";
+
+  useEffect(() => {
+    console.log("State:", gameState);
+  }, [gameState]);
 
   useEffect(() => {
     if (!team) return;
@@ -615,15 +674,15 @@ export default function TeamDashboardPage() {
         </div>
         </div>
 
-        {!round?.round_number && (
+        <div id="waitingScreen" style={{ display: showWaitingScreen ? "block" : "none" }}>
         <div className="card items-center text-center py-12" style={{ background: "var(--bg-container)" }}>
           <span className="inline-block w-2 h-2 bg-[var(--accent)] mb-2" style={{ animation: "pulse-dot 1.2s ease-in-out infinite" }} />
           <p className="label">STANDBY_MODE</p>
-          <p className="font-mono text-sm text-[var(--text-muted)]">WAITING FOR ADMIN TO INITIALIZE A ROUND</p>
+          <p className="font-mono text-sm text-[var(--text-muted)]">WAITING FOR ADMIN TO INITIALIZE THE ROUND</p>
         </div>
-        )}
+        </div>
 
-            {round?.round_number === 1 && round?.status === "active" && (
+            <div id="mysteryBoxScreen" style={{ display: showMysteryBoxScreen ? "block" : "none" }}>
         <div className="card space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -633,18 +692,13 @@ export default function TeamDashboardPage() {
             
           </div>
 
-          {unlockFlow === "locked" && (
-            <p className="text-sm text-[var(--text-muted)] text-center">
-              Waiting for admin to start the round.
-            </p>
-          )}
-          {unlockFlow !== "locked" && (
+          {gameState === "ready" && (
             <div className="mystery-box-scene" style={{ overflow: "hidden" }}>
               <MysteryBox
-                disabled={unlockFlow !== "unlocked"}
-                isClicked={unlockFlow !== "unlocked"}
+                disabled={false}
+                isClicked={false}
                 videoPreviewSrc={UNLOCK_VIDEO_SRC}
-                isPlaying={showUnlockVideo}
+                isPlaying={false}
                 gameTitle={PUBLIC_GAME_LABEL}
                 onEnded={() => {
                   void handleVideoEnded();
@@ -660,9 +714,59 @@ export default function TeamDashboardPage() {
                 )}
               </MysteryBox>
             </div>
-            )}
+          )}
+          <div id="videoScreen" style={{ display: showVideoScreen ? "block" : "none", pointerEvents: showVideoScreen ? "auto" : "none" }}>
+            <div
+              id="videoContainer"
+              className="mystery-box-scene"
+              style={{ overflow: "hidden", pointerEvents: showVideoScreen ? "auto" : "none" }}
+            >
+              <div className="card p-0 overflow-hidden">
+                <video
+                  id="introVideo"
+                  ref={introVideoRef}
+                  src={UNLOCK_VIDEO_SRC}
+                  preload="auto"
+                  playsInline
+                  muted
+                  className="w-full h-auto block"
+                  onCanPlayThrough={() => setVideoReady(true)}
+                  onEnded={() => {
+                    console.log("Video ended");
+                    handleVideoEnded();
+                  }}
+                  onTimeUpdate={(event) => {
+                    const video = event.currentTarget;
+                    if (introEndHandledRef.current) return;
+                    if (video.duration > 0 && video.currentTime >= video.duration - 0.2) {
+                      console.log("Video ended (fallback)");
+                      handleVideoEnded();
+                    }
+                  }}
+                  onError={() => {
+                    // Fail open to avoid blocking game flow if media decode/network hiccups.
+                    console.log("Video error, continuing to start screen");
+                    handleVideoEnded();
+                  }}
+                />
+                {!videoReady && (
+                  <div className="p-4 text-center">
+                    <p className="label">LOADING VIDEO...</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div id="startScreen" style={{ display: showStartScreen ? "block" : "none" }}>
+            <div className="mt-3 space-y-3 text-center">
+              <p id="gameTitle" className="label">MYSTERY GAMES</p>
+              <button id="startBtn" className="button-primary" onClick={() => void handleStartGameClick()}>
+                START GAME
+              </button>
+            </div>
+          </div>
         </div>
-            )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { teamId, boxId, details, correctCount, wrongCount, answers } = body;
+  const { teamId, boxId, details, correctCount, wrongCount, answers, scoreInput } = body;
   if (!teamId || !boxId) {
     return NextResponse.json(
       { error: "Team and box ids are required" },
@@ -89,7 +89,9 @@ export async function POST(request: NextRequest) {
   // - Wrong/Skip: -3 and streak resets to 0
   // If answer history is unavailable, fall back to correct/wrong counts without streak.
   let points = 0;
-  if (safeAnswers) {
+  if (typeof scoreInput === "number" && Number.isFinite(scoreInput)) {
+    points = Math.floor(scoreInput);
+  } else if (safeAnswers) {
     let streak = 0;
     for (const isCorrect of safeAnswers) {
       if (isCorrect) {

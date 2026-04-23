@@ -17,10 +17,19 @@ type MysteryBoxProps = {
 export function MysteryBox({ disabled, isClicked, videoPreviewSrc, isPlaying, gameTitle, onOpen, onEnded, children }: MysteryBoxProps) {
   const previewRef = useRef<HTMLVideoElement | null>(null);
   const [showTitleOverlay, setShowTitleOverlay] = useState(false);
+  const endSignaledRef = useRef(false);
 
   useEffect(() => {
     const video = previewRef.current;
     if (!video || !videoPreviewSrc) return;
+
+    video.preload = "auto";
+    video.load();
+
+    if (!isPlaying) {
+      setShowTitleOverlay(false);
+      endSignaledRef.current = false;
+    }
 
     if (isPlaying) {
       video.muted = false;
@@ -28,7 +37,7 @@ export function MysteryBox({ disabled, isClicked, videoPreviewSrc, isPlaying, ga
       video.play().catch((err) => {
         console.error("Video play failed", err);
         video.muted = true;
-        video.play();
+        video.play().catch((fallbackErr) => console.error("Muted video play failed", fallbackErr));
       });
       return;
     }
@@ -94,7 +103,7 @@ export function MysteryBox({ disabled, isClicked, videoPreviewSrc, isPlaying, ga
               ref={previewRef}
               className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${isPlaying ? 'opacity-100' : 'opacity-65 group-hover:opacity-80'}`}
               src={videoPreviewSrc}
-              preload={isPlaying ? "auto" : "metadata"}
+              preload="auto"
               playsInline
               onEnded={onEnded}
               onTimeUpdate={() => {
@@ -105,8 +114,20 @@ export function MysteryBox({ disabled, isClicked, videoPreviewSrc, isPlaying, ga
                 if (duration > 0 && duration - currentTime <= 3.8) {
                   if (!showTitleOverlay) {
                     setShowTitleOverlay(true);
-                    if (onEnded) onEnded();
                   }
+                }
+
+                if (duration > 0 && duration - currentTime <= 0.2 && !endSignaledRef.current) {
+                  endSignaledRef.current = true;
+                  onEnded?.();
+                }
+              }}
+              onPause={() => {
+                const video = previewRef.current;
+                if (!video || !isPlaying || endSignaledRef.current) return;
+                if (video.duration > 0 && video.currentTime >= video.duration - 0.2) {
+                  endSignaledRef.current = true;
+                  onEnded?.();
                 }
               }}
             />
